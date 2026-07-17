@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.env
+.DS_Store
+.vscode/
+.idea/
+.claude/
+
+
+
+# Ignore build output in public but keep template + static assets
+public/*
+!public/template.html
+!public/favicon.svg
+!public/fonts/
+
+test-results/
+playwright-report/
+*.db
+*.db*
+!src/database/migrations/*.db.json
+*.log*

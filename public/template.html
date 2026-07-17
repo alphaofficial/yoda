@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>{{TITLE}}</title>
+		<meta key="title" content="{{TITLE}}" property="og:title" />
+		<meta
+			key="viewport"
+			content="viewport-fit=cover, width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=0"
+			name="viewport"
+		/>
+		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+		<link rel="preload" as="font" type="font/woff2" href="/fonts/fraunces-latin.woff2" crossorigin />
+		<link rel="stylesheet" href="/main.css" />
+		{{HEAD}}
+	</head>
+	<body>
+		{{APP}}
+		<script type="module" src="{{CLIENT_ENTRY}}"></script>
+	</body>
+</html>

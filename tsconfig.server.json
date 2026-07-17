@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "declaration": true,
+		"removeComments": true,
+    "outDir": "./dist",
+    "target": "ES2021",
+		"sourceMap": true,
+    "noEmit": false,
+    "baseUrl": "./",
+    "paths": {
+			"@/*": ["src/*"]
+		},
+    "isolatedModules": true,
+  },
+  "include": ["src/**/*"],
+  "exclude": ["src/views/**/*", "tests/**/*", "**/*.test.ts"],
+  "ts-node": {
+		"require": ["tsconfig-paths/register"]
+	}
+}

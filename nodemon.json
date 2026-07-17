@@ -1,0 +1,6 @@
+{
+  "watch": ["src"],
+  "ext": "ts,json",
+  "exec": "node --inspect=9222 --import tsx src/index.ts | pino-pretty",
+  "ignore": ["public/**", "src/views/**", "src/database/migrations/**", "**/*.test.ts"]
+}
