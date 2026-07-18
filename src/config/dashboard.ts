@@ -1,0 +1,387 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import type {
+	AddShortcutInput,
+	DashboardConfig,
+	ShortcutConfig,
+	ShortcutGroupConfig,
+	ShortcutIcon,
+} from '@/types/dashboard';
+import { DashboardConfigError, ShortcutValidationError } from '@/types/dashboard';
+import variables from '@/config/variables';
+
+const DASHBOARD_CONFIG_PATH = variables.DASHBOARD_CONFIG_PATH;
+
+const ID_REGEX = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const LABEL_MAX_LENGTH = 60;
+const DISPLAY_NAME_MAX_LENGTH = 60;
+const VALID_ICONS: ShortcutIcon[] = ['calendar', 'github', 'jira', 'link', 'obsidian'];
+const VALID_PROTOCOLS = ['http:', 'https:', 'obsidian:'];
+
+function generateId(label: string, existingIds: Set<string>): string {
+	const base = label
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, '-')
+		.replace(/^-|-$/g, '')
+		.slice(0, 34);
+
+	const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+	let suffix = '';
+	for (let i = 0; i < 6; i++) {
+		suffix += chars[Math.floor(Math.random() * chars.length)];
+	}
+
+	let id = `${base}-${suffix}`;
+	let attempts = 0;
+	while (existingIds.has(id) && attempts < 10) {
+		suffix = '';
+		for (let i = 0; i < 6; i++) {
+			suffix += chars[Math.floor(Math.random() * chars.length)];
+		}
+		id = `${base}-${suffix}`;
+		attempts++;
+	}
+
+	return id;
+}
+
+function validateTimeZone(timeZone: string): void {
+	try {
+		Intl.DateTimeFormat(undefined, { timeZone });
+	} catch {
+		throw new DashboardConfigError('Invalid time zone', { timeZone });
+	}
+}
+
+function validateRepository(repo: string): void {
+	if (!/^[^/]+\/[^/]+$/.test(repo)) {
+		throw new DashboardConfigError('Invalid repository format', { repository: repo });
+	}
+}
+
+function validateId(id: string, fieldName: string): void {
+	if (!ID_REGEX.test(id)) {
+		throw new DashboardConfigError(
+			`Invalid ${fieldName} ID`,
+			{ [fieldName]: id }
+		);
+	}
+}
+
+function validateLabel(label: string, fieldName = 'Label'): void {
+	const trimmed = label.trim();
+	if (trimmed.length === 0) {
+		throw new DashboardConfigError(`${fieldName} is required`, { label });
+	}
+	if (trimmed.length > LABEL_MAX_LENGTH) {
+		throw new DashboardConfigError(
+			`${fieldName} must be 1–${LABEL_MAX_LENGTH} characters`,
+			{ label }
+		);
+	}
+}
+
+function validateIcon(icon: string): void {
+	if (!VALID_ICONS.includes(icon as ShortcutIcon)) {
+		throw new DashboardConfigError(
+			`Invalid icon`,
+			{ icon }
+		);
+	}
+}
+
+function validateShortcutUrl(urlString: string): void {
+	let url: URL;
+	try {
+		url = new URL(urlString);
+	} catch {
+		throw new ShortcutValidationError('Invalid URL', { url: urlString });
+	}
+
+	if (!VALID_PROTOCOLS.includes(url.protocol)) {
+		throw new ShortcutValidationError('Invalid URL protocol', { url: urlString });
+	}
+
+	if ((url.protocol === 'http:' || url.protocol === 'https:') && !url.host) {
+		throw new ShortcutValidationError('URL must have a host', { url: urlString });
+	}
+
+	if (url.username || url.password) {
+		throw new ShortcutValidationError('URL must not contain credentials', { url: urlString });
+	}
+}
+
+function validateUrl(urlString: string): void {
+	let url: URL;
+	try {
+		url = new URL(urlString);
+	} catch {
+		throw new DashboardConfigError('Invalid URL', { url: urlString });
+	}
+
+	if (!VALID_PROTOCOLS.includes(url.protocol)) {
+		throw new DashboardConfigError('Invalid URL protocol', { url: urlString });
+	}
+
+	if ((url.protocol === 'http:' || url.protocol === 'https:') && !url.host) {
+		throw new DashboardConfigError('URL must have a host', { url: urlString });
+	}
+
+	if (url.username || url.password) {
+		throw new DashboardConfigError('URL must not contain credentials', { url: urlString });
+	}
+}
+
+function validateDisplayName(displayName: string): void {
+	const trimmed = displayName.trim();
+	if (trimmed.length < 1 || trimmed.length > DISPLAY_NAME_MAX_LENGTH) {
+		throw new DashboardConfigError(
+			`Display name must be 1–${DISPLAY_NAME_MAX_LENGTH} characters`,
+			{ displayName }
+		);
+	}
+}
+
+function validateLookaheadDays(days: number): void {
+	if (!Number.isInteger(days) || days < 1 || days > 30) {
+		throw new DashboardConfigError(
+			'lookaheadDays must be an integer from 1 to 30',
+			{ lookaheadDays: String(days) }
+		);
+	}
+}
+
+export function validateDashboardConfig(config: unknown): DashboardConfig {
+	if (!config || typeof config !== 'object') {
+		throw new DashboardConfigError('Configuration must be an object');
+	}
+
+	const c = config as Record<string, unknown>;
+
+	if (typeof c.displayName !== 'string') {
+		throw new DashboardConfigError('displayName is required');
+	}
+	validateDisplayName(c.displayName);
+
+	if (typeof c.timeZone !== 'string') {
+		throw new DashboardConfigError('timeZone is required');
+	}
+	validateTimeZone(c.timeZone);
+
+	const github = c.github;
+	if (!github || typeof github !== 'object') {
+		throw new DashboardConfigError('github configuration is required');
+	}
+	const gh = github as Record<string, unknown>;
+	const repoList = gh.repositories;
+	if (!Array.isArray(repoList)) {
+		throw new DashboardConfigError('github.repositories must be an array');
+	}
+	const seenRepos = new Set<string>();
+	for (const repo of repoList) {
+		if (typeof repo !== 'string') {
+			throw new DashboardConfigError('Repository must be a string');
+		}
+		if (seenRepos.has(repo)) {
+			throw new DashboardConfigError('Duplicate repository', { repository: repo });
+		}
+		seenRepos.add(repo);
+		validateRepository(repo);
+	}
+
+	const calendar = c.calendar;
+	if (!calendar || typeof calendar !== 'object') {
+		throw new DashboardConfigError('calendar configuration is required');
+	}
+	const cal = calendar as Record<string, unknown>;
+	const calendarIds = cal.calendarIds;
+	if (!Array.isArray(calendarIds)) {
+		throw new DashboardConfigError('calendar.calendarIds must be an array');
+	}
+	for (const id of calendarIds) {
+		if (typeof id !== 'string') {
+			throw new DashboardConfigError('Calendar ID must be a string');
+		}
+	}
+
+	if (typeof cal.lookaheadDays !== 'number') {
+		throw new DashboardConfigError('calendar.lookaheadDays is required');
+	}
+	validateLookaheadDays(cal.lookaheadDays);
+
+	const shortcutGroups = c.shortcutGroups;
+	if (!Array.isArray(shortcutGroups)) {
+		throw new DashboardConfigError('shortcutGroups must be an array');
+	}
+
+	const seenGroupIds = new Set<string>();
+	for (const group of shortcutGroups) {
+		if (!group || typeof group !== 'object') {
+			throw new DashboardConfigError('Each shortcut group must be an object');
+		}
+		const g = group as Record<string, unknown>;
+
+		if (typeof g.id !== 'string') {
+			throw new DashboardConfigError('Group ID is required');
+		}
+		validateId(g.id, 'group');
+		if (seenGroupIds.has(g.id)) {
+			throw new DashboardConfigError('Duplicate group ID', { groupId: g.id });
+		}
+		seenGroupIds.add(g.id);
+
+		if (typeof g.label !== 'string') {
+			throw new DashboardConfigError('Group label is required');
+		}
+		validateLabel(g.label, 'Group label');
+
+		const shortcuts = g.shortcuts;
+		if (!Array.isArray(shortcuts)) {
+			throw new DashboardConfigError('Group shortcuts must be an array');
+		}
+
+		const seenShortcutIds = new Set<string>();
+		for (const shortcut of shortcuts) {
+			if (!shortcut || typeof shortcut !== 'object') {
+				throw new DashboardConfigError('Each shortcut must be an object');
+			}
+			const s = shortcut as Record<string, unknown>;
+
+			if (typeof s.id !== 'string') {
+				throw new DashboardConfigError('Shortcut ID is required');
+			}
+			validateId(s.id, 'shortcut');
+			if (seenShortcutIds.has(s.id)) {
+				throw new DashboardConfigError('Duplicate shortcut ID', { shortcutId: s.id });
+			}
+			seenShortcutIds.add(s.id);
+
+			if (typeof s.label !== 'string') {
+				throw new DashboardConfigError('Shortcut label is required');
+			}
+			validateLabel(s.label, 'Shortcut label');
+
+			if (typeof s.url !== 'string') {
+				throw new DashboardConfigError('Shortcut URL is required');
+			}
+			validateUrl(s.url);
+
+			if (typeof s.icon !== 'string') {
+				throw new DashboardConfigError('Shortcut icon is required');
+			}
+			validateIcon(s.icon);
+		}
+	}
+
+	return {
+		displayName: c.displayName.trim(),
+		timeZone: c.timeZone,
+		github: {
+			repositories: repoList as string[],
+		},
+		calendar: {
+			calendarIds: calendarIds as string[],
+			lookaheadDays: cal.lookaheadDays as number,
+		},
+		shortcutGroups: shortcutGroups as ShortcutGroupConfig[],
+	};
+}
+
+export async function loadDashboardConfig(
+	configPath: string = DASHBOARD_CONFIG_PATH
+): Promise<DashboardConfig> {
+	try {
+		const content = await fs.readFile(configPath, 'utf-8');
+		const parsed = JSON.parse(content);
+		return validateDashboardConfig(parsed);
+	} catch (e) {
+		if (e instanceof DashboardConfigError) throw e;
+		if ((e as NodeJS.ErrnoException).code === 'ENOENT') {
+			throw new DashboardConfigError('Configuration file not found');
+		}
+		throw new DashboardConfigError(`Failed to read configuration: ${(e as Error).message}`);
+	}
+}
+
+export async function saveDashboardConfig(
+	config: DashboardConfig,
+	configPath: string
+): Promise<void> {
+	const content = JSON.stringify(config, null, '\t') + '\n';
+	const tmpPath = configPath + '.tmp';
+	await fs.writeFile(tmpPath, content, 'utf-8');
+	await fs.rename(tmpPath, configPath);
+}
+
+export function validateShortcutInput(input: unknown): AddShortcutInput {
+	if (!input || typeof input !== 'object') {
+		throw new ShortcutValidationError('Invalid input');
+	}
+
+	const i = input as Record<string, unknown>;
+
+	if (typeof i.groupId !== 'string') {
+		throw new ShortcutValidationError('groupId is required', { groupId: 'Required' });
+	}
+	validateId(i.groupId, 'group');
+
+	if (typeof i.label !== 'string') {
+		throw new ShortcutValidationError('label is required', { label: 'Required' });
+	}
+	validateLabel(i.label, 'Shortcut label');
+
+	if (typeof i.url !== 'string') {
+		throw new ShortcutValidationError('url is required', { url: 'Required' });
+	}
+	validateShortcutUrl(i.url);
+
+	if (typeof i.icon !== 'string') {
+		throw new ShortcutValidationError('icon is required', { icon: 'Required' });
+	}
+	validateIcon(i.icon);
+
+	if (i.position !== undefined && (typeof i.position !== 'number' || !Number.isInteger(i.position))) {
+		throw new ShortcutValidationError('position must be an integer', { position: 'Must be an integer' });
+	}
+
+	return {
+		groupId: i.groupId,
+		label: i.label.trim(),
+		url: i.url,
+		icon: i.icon as ShortcutIcon,
+		position: i.position as number | undefined,
+	};
+}
+
+export async function addShortcut(
+	input: AddShortcutInput,
+	configPath: string = DASHBOARD_CONFIG_PATH
+): Promise<ShortcutConfig> {
+	const validated = validateShortcutInput(input);
+
+	const config = await loadDashboardConfig(configPath);
+
+	const group = config.shortcutGroups.find(g => g.id === validated.groupId);
+	if (!group) {
+		throw new ShortcutValidationError('Group not found', { groupId: 'Group not found' });
+	}
+
+	const existingIds = new Set(group.shortcuts.map(s => s.id));
+	const id = generateId(validated.label, existingIds);
+
+	const position = validated.position ?? group.shortcuts.length;
+	const clampedPosition = Math.max(0, Math.min(position, group.shortcuts.length));
+
+	const shortcut: ShortcutConfig = {
+		id,
+		label: validated.label,
+		url: validated.url,
+		icon: validated.icon,
+	};
+
+	group.shortcuts.splice(clampedPosition, 0, shortcut);
+
+	await saveDashboardConfig(config, configPath);
+
+	return shortcut;
+}

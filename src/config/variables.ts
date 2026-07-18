@@ -76,6 +76,35 @@ const variables = {
 	MAIL_USER: env('MAIL_USER'),
 	MAIL_PASS: env('MAIL_PASS'),
 	DISABLE_SSR: env.bool('DISABLE_SSR', false),
+	DASHBOARD_CONFIG_PATH: env('DASHBOARD_CONFIG_PATH', 'config/dashboard.json')!,
+	DASHBOARD_CACHE_TTL_SECONDS: (() => {
+		const raw = envValue('DASHBOARD_CACHE_TTL_SECONDS');
+		const value = raw ? Number(raw) : 60;
+		if (Number.isNaN(value) || !Number.isInteger(value) || value < 5 || value > 3600) {
+			throw new Error('DASHBOARD_CACHE_TTL_SECONDS must be an integer from 5 to 3600');
+		}
+		return value;
+	})(),
+	DASHBOARD_REQUEST_TIMEOUT_MS: (() => {
+		const raw = envValue('DASHBOARD_REQUEST_TIMEOUT_MS');
+		const value = raw ? Number(raw) : 5000;
+		if (Number.isNaN(value) || !Number.isInteger(value) || value < 1000 || value > 30000) {
+			throw new Error('DASHBOARD_REQUEST_TIMEOUT_MS must be an integer from 1000 to 30000');
+		}
+		return value;
+	})(),
+	DASHBOARD_RETRY_COUNT: (() => {
+		const raw = envValue('DASHBOARD_RETRY_COUNT');
+		const value = raw ? Number(raw) : 2;
+		if (Number.isNaN(value) || !Number.isInteger(value) || value < 0 || value > 4) {
+			throw new Error('DASHBOARD_RETRY_COUNT must be an integer from 0 to 4');
+		}
+		return value;
+	})(),
+	GITHUB_TOKEN: env('GITHUB_TOKEN'),
+	GOOGLE_CLIENT_ID: env('GOOGLE_CLIENT_ID'),
+	GOOGLE_CLIENT_SECRET: env('GOOGLE_CLIENT_SECRET'),
+	GOOGLE_REFRESH_TOKEN: env('GOOGLE_REFRESH_TOKEN'),
 };
 
 if (!variables.SESSION_SECRET) {
