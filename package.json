@@ -38,7 +38,6 @@
   "license": "MIT",
   "dependencies": {
     "@base-ui/react": "^1.6.0",
-    "@fontsource-variable/inter": "^5.2.8",
     "@inertiajs/react": "^2.1.11",
     "@mikro-orm/core": "^6.5.8",
     "@mikro-orm/migrations": "^6.5.1",

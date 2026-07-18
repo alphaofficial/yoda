@@ -2,6 +2,7 @@ import { promises as fs } from 'fs';
 import type {
 	AddShortcutInput,
 	DashboardConfig,
+	ShortcutSettingsExport,
 	ShortcutConfig,
 	ShortcutGroupConfig,
 	ShortcutIcon,
@@ -185,6 +186,7 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 	}
 
 	const seenGroupIds = new Set<string>();
+	const seenShortcutIds = new Set<string>();
 	for (const group of shortcutGroups) {
 		if (!group || typeof group !== 'object') {
 			throw new DashboardConfigError('Each shortcut group must be an object');
@@ -210,7 +212,6 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 			throw new DashboardConfigError('Group shortcuts must be an array');
 		}
 
-		const seenShortcutIds = new Set<string>();
 		for (const shortcut of shortcuts) {
 			if (!shortcut || typeof shortcut !== 'object') {
 				throw new DashboardConfigError('Each shortcut must be an object');
@@ -254,6 +255,36 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 		},
 		shortcutGroups: shortcutGroups as ShortcutGroupConfig[],
 	};
+}
+
+export function createShortcutSettingsExport(
+	shortcutGroups: ShortcutGroupConfig[],
+	exportedAt: Date = new Date(),
+): ShortcutSettingsExport {
+	return {
+		version: 1,
+		exportedAt: exportedAt.toISOString(),
+		shortcutGroups,
+	};
+}
+
+export function validateShortcutSettingsImport(input: unknown): ShortcutGroupConfig[] {
+	if (!input || typeof input !== 'object') {
+		throw new DashboardConfigError('Shortcut import must be an object');
+	}
+
+	const envelope = input as Record<string, unknown>;
+	if (envelope.version !== 1) {
+		throw new DashboardConfigError('Unsupported shortcut export version');
+	}
+
+	const config = validateDashboardConfig({
+		displayName: 'Imported shortcuts',
+		timeZone: 'UTC',
+		github: { repositories: [] },
+		shortcutGroups: envelope.shortcutGroups,
+	});
+	return config.shortcutGroups;
 }
 
 export async function loadDashboardConfig(

@@ -4,8 +4,10 @@ import path from 'path';
 import os from 'os';
 import {
 	validateDashboardConfig,
+	createShortcutSettingsExport,
 	loadDashboardConfig,
 	addShortcut,
+	validateShortcutSettingsImport,
 	validateShortcutInput,
 } from '@/config/dashboard';
 import { DashboardConfigError, ShortcutValidationError } from '@/types/dashboard';
@@ -596,6 +598,42 @@ describe('shortcut persistence', () => {
 		await fs.writeFile(configPath, JSON.stringify(config, null, '\t') + '\n');
 		return configPath;
 	}
+
+	describe('shortcut settings transfer', () => {
+		it('round-trips shortcut groups without other dashboard settings', () => {
+			const config = validateDashboardConfig(validConfig);
+			const exported = createShortcutSettingsExport(
+				config.shortcutGroups,
+				new Date('2026-07-18T12:00:00.000Z'),
+			);
+
+			expect(exported).toEqual({
+				version: 1,
+				exportedAt: '2026-07-18T12:00:00.000Z',
+				shortcutGroups: config.shortcutGroups,
+			});
+			expect(JSON.stringify(exported)).not.toContain('githubToken');
+			expect(JSON.stringify(exported)).not.toContain('repositories');
+			expect(validateShortcutSettingsImport(exported)).toEqual(config.shortcutGroups);
+		});
+
+		it('rejects unsupported export versions', () => {
+			expect(() => validateShortcutSettingsImport({ version: 2, shortcutGroups: [] }))
+				.toThrow('Unsupported shortcut export version');
+		});
+
+		it('rejects duplicate shortcut IDs across groups', () => {
+			const exported = {
+				version: 1,
+				shortcutGroups: [
+					{ id: 'one', label: 'One', shortcuts: [{ id: 'duplicate', label: 'First', url: 'https://one.example.com', icon: 'link' }] },
+					{ id: 'two', label: 'Two', shortcuts: [{ id: 'duplicate', label: 'Second', url: 'https://two.example.com', icon: 'link' }] },
+				],
+			};
+
+			expect(() => validateShortcutSettingsImport(exported)).toThrow('Duplicate shortcut ID');
+		});
+	});
 
 	describe('addShortcut', () => {
 		it('appends shortcut to group when no position provided', async () => {

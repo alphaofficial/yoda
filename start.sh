@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
 
-# npm run prestart:prod || true   # runs if defined
-npm run start:prod              # must exist
+npm run migration:run
+npm run dashboard:setup
+exec pm2-runtime ecosystem.config.js

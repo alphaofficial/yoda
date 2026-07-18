@@ -1,13 +1,14 @@
 # Personal Dashboard
 
-A self-hosted new-tab dashboard that aggregates GitHub pull requests, Google Calendar events, and persistent shortcuts into a single responsive page served at `http://dashboard.localhost`.
+A self-hosted new-tab dashboard that combines GitHub pull requests and persistent shortcuts in one responsive page.
 
 ## Features
 
 - Time-zone-correct date, live clock, and morning/afternoon/evening greeting
 - Pull request metrics (open, draft, merged, closed) from configured GitHub repositories
-- Calendar events bucketed by today and upcoming, with all-day and timed event support
-- Grouped shortcuts with an add dialog; shortcuts persist to `config/dashboard.json`
+- Searchable pull requests from every selected repository or organization wildcard
+- Grouped, searchable shortcuts managed from Settings and persisted in SQLite
+- Shortcut JSON export/import for moving shortcuts between instances
 - Stale-while-revalidate caching with server-side refresh deduplication
 - Partial failure handling: healthy integrations render while failed ones retain cached data
 
@@ -16,14 +17,13 @@ A self-hosted new-tab dashboard that aggregates GitHub pull requests, Google Cal
 - Node 22
 - Docker Desktop (for containerized deployment)
 - GitHub fine-grained personal access token with read-only repository access
-- Google OAuth 2.0 client with a refresh token for Calendar API access
 
 ## Local Development
 
 ```bash
 npm install
 cp env.example .env
-# Edit .env: set SESSION_SECRET, APP_KEY, GITHUB_TOKEN, GOOGLE_* credentials
+# Edit .env: set SESSION_SECRET, APP_KEY, PORT, and APP_URL
 npm run build
 npm run start:dev
 ```
@@ -34,7 +34,7 @@ Or with live reload:
 npm run start:dev
 ```
 
-Navigate to `http://localhost:3000`.
+Navigate to the `APP_URL` configured in `.env`.
 
 ## Configuration
 
@@ -46,27 +46,24 @@ Navigate to `http://localhost:3000`.
 | `APP_KEY` | (required in prod) | HMAC signing key. Generate with `openssl rand -hex 32` |
 | `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Path to the dashboard configuration file |
 | `DASHBOARD_CACHE_TTL_SECONDS` | `60` | Cache TTL in seconds (5–3600) |
+| `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL in seconds (60–86400) |
 | `DASHBOARD_REQUEST_TIMEOUT_MS` | `5000` | HTTP request timeout in milliseconds (1000–30000) |
 | `DASHBOARD_RETRY_COUNT` | `2` | Number of retries for failed requests (0–4) |
-| `GITHUB_TOKEN` | (none) | GitHub fine-grained personal access token |
-| `GOOGLE_CLIENT_ID` | (none) | Google OAuth 2.0 client ID |
-| `GOOGLE_CLIENT_SECRET` | (none) | Google OAuth 2.0 client secret |
-| `GOOGLE_REFRESH_TOKEN` | (none) | Google OAuth refresh token |
 
 ### Dashboard configuration file
 
-`config/dashboard.json`:
+`config/dashboard.json` is used only to initialize an empty SQLite database. After the first startup, SQLite is the source of truth and changes are made from the Settings page.
+
+Example:
 
 ```json
 {
   "displayName": "Albert",
   "timeZone": "Europe/London",
+  "shortcutLimit": 8,
   "github": {
-    "repositories": ["owner/repository"]
-  },
-  "calendar": {
-    "calendarIds": ["primary"],
-    "lookaheadDays": 7
+    "windowDays": 7,
+    "repositories": []
   },
   "shortcutGroups": [
     {
@@ -86,8 +83,8 @@ Navigate to `http://localhost:3000`.
 | `displayName` | 1–60 characters, trimmed |
 | `timeZone` | Valid IANA time zone (e.g. `America/New_York`) |
 | `github.repositories` | Array of `owner/repository` strings, unique |
-| `calendar.calendarIds` | Array of calendar IDs; `primary` for the main calendar |
-| `calendar.lookaheadDays` | Integer 1–30 |
+| `github.windowDays` | Integer 1–30; defaults to 7 |
+| `shortcutLimit` | Integer 1–50; defaults to 8 |
 | `shortcutGroups[].id` | Lowercase `[a-z0-9][a-z0-9-]{0,39}`, unique per group |
 | `shortcuts[].id` | Lowercase `[a-z0-9][a-z0-9-]{0,39}`, unique within group |
 | `shortcuts[].label` | 1–60 characters, trimmed |
@@ -104,23 +101,6 @@ Generate a fine-grained token at GitHub Settings > Developer settings > Personal
 
 The token needs no additional permissions.
 
-### Google OAuth refresh token
-
-1. Create an OAuth 2.0 client in the Google Cloud Console.
-2. Request offline access and the `https://www.googleapis.com/auth/calendar.readonly` scope.
-3. Exchange the authorization code for a refresh token using `curl`:
-
-```bash
-curl -X POST https://oauth2.googleapis.com/token \
-  -d "code=<auth_code>" \
-  -d "client_id=<client_id>" \
-  -d "client_secret=<client_secret>" \
-  -d "redirect_uri=http://localhost" \
-  -d "grant_type=authorization_code"
-```
-
-Store the `refresh_token` value in `GOOGLE_REFRESH_TOKEN`.
-
 ## Testing
 
 ```bash
@@ -132,41 +112,71 @@ npm run test:all         # All of the above
 
 ## Container Deployment
 
-### Start
+### Initial setup
+
+1. Copy and edit the environment file. `APP_URL` must use the same hostname you open in the browser.
 
 ```bash
-docker compose up -d
+cp env.example .env
 ```
 
-### Stop
+2. Review `config/dashboard.json`. It seeds an empty database once; it does not drive the running application afterward.
+
+3. Build the image and create a persistent SQLite volume.
 
 ```bash
-docker compose down
+docker build -t personal-dashboard .
+docker volume create personal-dashboard-data
+```
+
+4. Start the container. This example assumes `PORT=3333` and `APP_URL=http://localhost:3333` in `.env`.
+
+```bash
+docker run -d \
+  --name personal-dashboard \
+  --restart unless-stopped \
+  --env-file .env \
+  --env DB_PATH=/data/dashboard.db \
+  --volume personal-dashboard-data:/data \
+  --publish 127.0.0.1:3333:3333 \
+  personal-dashboard
+```
+
+At every container start, the entrypoint applies only pending MikroORM migrations. It then seeds `config/dashboard.json` only when the dashboard settings table is empty, and finally starts PM2.
+
+Open `http://localhost:3333`, go to Settings, and save a GitHub token. GitHub credentials are stored in SQLite and are never included in shortcut exports.
+
+### Stop and start
+
+```bash
+docker stop personal-dashboard
+docker start personal-dashboard
 ```
 
 ### View logs
 
 ```bash
-docker compose logs -f
+docker logs -f personal-dashboard
 ```
 
 ### Check health
 
 ```bash
-curl http://127.0.0.1/healthz
+curl http://localhost:3333/healthz
+curl http://localhost:3333/readyz
 ```
 
 The dashboard is available at the `APP_URL` configured in `.env`.
 
 ### Configuration backup
 
-Back up `config/dashboard.json` and `.env` separately. The container reads these on start; the image itself contains no credentials or configuration.
+Back up the `personal-dashboard-data` volume and `.env`. `config/dashboard.json` is only the initial seed. Shortcut exports are available from Settings and intentionally exclude GitHub credentials.
 
 ### Security boundaries
 
-- The application binds its configured `PORT` exclusively to `127.0.0.1`. No public ingress and no port 80 binding.
+- The example `docker run` command publishes the application exclusively on `127.0.0.1`. No public ingress or port 80 binding is required.
 - Credentials are read from `.env` at runtime and never baked into the image.
-- `config/dashboard.json` is mounted from the host and owned by the user; it is not part of the image.
+- Runtime configuration is stored in the persistent SQLite volume.
 
 ## Troubleshooting
 
@@ -180,20 +190,16 @@ Back up `config/dashboard.json` and `.env` separately. The container reads these
 
 GitHub GraphQL allows 5000 points per hour. The dashboard uses up to 4 points per repository per request. If `remaining` hits zero, the service pauses until `resetAt` and reports a rate-limit error in the integration health badge.
 
-### Google 401 on calendar events
-
-If the access token expires, the client discards it, renews from the refresh token, and replays the failed request once. If renewal fails, the calendar integration shows an error state and retains any cached data.
-
 ### Dashboard shows stale data
 
-The cache TTL is controlled by `DASHBOARD_CACHE_TTL_SECONDS`. A stale response triggers a background refresh on the next request. Check `docker compose logs app` for refresh activity.
+The cache TTL is controlled by `DASHBOARD_CACHE_TTL_SECONDS`. A stale response triggers a background refresh on the next request. Check `docker logs personal-dashboard` for refresh activity.
 
 ## macOS Chromium Setup
 
 ### Start the service
 
 ```bash
-docker compose up -d
+docker start personal-dashboard
 ```
 
 ### Optional: set as home page
@@ -201,7 +207,7 @@ docker compose up -d
 1. Open `chrome://settings`.
 2. Navigate to **Appearance** > **Home**.
 3. Enable **Show home button**.
-4. Set the URL to `http://dashboard.localhost/`.
+4. Set the URL to the `APP_URL` configured in `.env`.
 
 ### Start Docker at login
 

@@ -120,6 +120,51 @@ export class DashboardConfigRepository {
 		return repositories;
 	}
 
+	async importShortcuts(shortcutGroups: ShortcutGroupConfig[]): Promise<DashboardConfig> {
+		return this.db.transactional(async db => {
+			const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
+			const existing = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
+			const imported = shortcutGroups.flatMap(group => group.shortcuts.map((shortcut, position) => ({
+				id: shortcut.id,
+				groupId: group.id,
+				groupLabel: group.label,
+				label: shortcut.label,
+				url: shortcut.url,
+				icon: shortcut.icon,
+				position,
+			}))).sort((a, b) => a.groupId.localeCompare(b.groupId) || a.position - b.position);
+			const unchanged = existing.length === imported.length && existing.every((shortcut, index) => {
+				const candidate = imported[index];
+				return shortcut.id === candidate.id
+					&& shortcut.groupId === candidate.groupId
+					&& shortcut.groupLabel === candidate.groupLabel
+					&& shortcut.label === candidate.label
+					&& shortcut.url === candidate.url
+					&& shortcut.icon === candidate.icon
+					&& shortcut.position === candidate.position;
+			});
+			if (unchanged) return toConfig(settings, existing);
+
+			await db.nativeDelete(DashboardShortcut, {});
+			const now = new Date();
+			const shortcuts = imported.map(shortcut => db.create(DashboardShortcut, {
+				id: shortcut.id,
+				groupId: shortcut.groupId,
+				groupLabel: shortcut.groupLabel,
+				label: shortcut.label,
+				url: shortcut.url,
+				icon: shortcut.icon,
+				position: shortcut.position,
+				createdAt: now,
+				updatedAt: now,
+			}));
+
+			if (shortcuts.length > 0) db.persist(shortcuts);
+			await db.flush();
+			return toConfig(settings, shortcuts);
+		});
+	}
+
 	async updateShortcut(id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
 		const shortcut = await this.db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Shortcut not found', { shortcutId: 'Shortcut not found' });

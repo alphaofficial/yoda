@@ -6,12 +6,12 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	ChevronUp,
+	Download,
 	ExternalLink,
 	GitPullRequest,
 	GripVertical,
 	Link2,
 	Pencil,
-	Plus,
 	Search,
 	Settings2,
 	Trash2,
@@ -40,6 +40,8 @@ interface SettingsData {
 
 interface PageProps extends InertiaPageProps {
 	applicationName: string;
+	activeSection: SettingsSection;
+	repositoryCatalog: (GitHubRepositoryCatalog & { selectedScopes: string[] }) | null;
 	settings: SettingsData;
 }
 
@@ -94,11 +96,12 @@ function BookmarkImporter({
 		setError('');
 		const html = await file.text();
 		const document = new DOMParser().parseFromString(html, 'text/html');
+		const existingUrls = new Set(groups.flatMap(group => group.shortcuts.map(shortcut => shortcut.url)));
 		const seen = new Set<string>();
 		const parsed = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]'))
 			.map(anchor => ({ label: anchor.textContent?.trim() ?? '', url: anchor.href }))
 			.filter(bookmark => {
-				if (!/^https?:\/\//i.test(bookmark.url) || seen.has(bookmark.url)) return false;
+				if (!/^https?:\/\//i.test(bookmark.url) || seen.has(bookmark.url) || existingUrls.has(bookmark.url)) return false;
 				seen.add(bookmark.url);
 				return true;
 			})
@@ -110,7 +113,7 @@ function BookmarkImporter({
 			}));
 
 		if (parsed.length === 0) {
-			setError('No web bookmarks were found in that file.');
+			setError('No new web bookmarks were found in that file.');
 			return;
 		}
 
@@ -222,15 +225,15 @@ function BookmarkImporter({
 
 export default function Settings() {
 	const { props } = usePage<PageProps>();
-	const { applicationName, settings } = props;
-	const [activeSection, setActiveSection] = useState<SettingsSection>('general');
+	const { activeSection: initialSection, applicationName, repositoryCatalog: initialRepositoryCatalog, settings } = props;
+	const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 	const [displayName, setDisplayName] = useState(settings.displayName);
 	const [timeZone, setTimeZone] = useState(settings.timeZone);
 	const [shortcutLimit, setShortcutLimit] = useState(settings.shortcutLimit);
 	const [pullRequestWindowDays, setPullRequestWindowDays] = useState(settings.pullRequestWindowDays ?? 7);
 	const [token, setToken] = useState('');
-	const [repositoryCatalog, setRepositoryCatalog] = useState<GitHubRepositoryCatalog | null>(null);
-	const [selectedRepositories, setSelectedRepositories] = useState(settings.repositories);
+	const [repositoryCatalog, setRepositoryCatalog] = useState<GitHubRepositoryCatalog | null>(initialRepositoryCatalog);
+	const [selectedRepositories, setSelectedRepositories] = useState(initialRepositoryCatalog?.selectedScopes ?? settings.repositories);
 	const [repositorySearch, setRepositorySearch] = useState('');
 	const [repositoryPage, setRepositoryPage] = useState(1);
 	const [loadingRepositories, setLoadingRepositories] = useState(false);
@@ -246,12 +249,13 @@ export default function Settings() {
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [message, setMessage] = useState('');
+	const shortcutImportRef = useRef<HTMLInputElement>(null);
 
-	const loadGithubRepositories = async () => {
+	const loadGithubRepositories = async (refresh = false) => {
 		setLoadingRepositories(true);
 		setRepositoryError('');
 		try {
-			const response = await fetch('/api/settings/github/repositories', { headers: { 'Accept': 'application/json' } });
+			const response = await fetch(`/api/settings/github/repositories${refresh ? '?refresh=1' : ''}`, { headers: { 'Accept': 'application/json' } });
 			if (!response.ok) throw new Error(response.status === 401 ? 'Save a GitHub token before loading repositories.' : 'Could not load repositories from GitHub.');
 			const data = await response.json() as GitHubRepositoryCatalog & { selectedScopes: string[] };
 			setRepositoryCatalog(data);
@@ -269,6 +273,14 @@ export default function Settings() {
 			void loadGithubRepositories();
 		}
 	}, [activeSection]);
+
+	const selectSection = (section: SettingsSection) => {
+		setActiveSection(section);
+		setMessage('');
+		const url = new URL(window.location.href);
+		url.searchParams.set('section', section);
+		window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+	};
 
 	const saveGeneral = async () => {
 		setSaving(true);
@@ -470,6 +482,39 @@ export default function Settings() {
 		setMessage(`${imported.length} bookmark${imported.length === 1 ? '' : 's'} imported.`);
 	};
 
+	const importShortcutSettings = async (event: ChangeEvent<HTMLInputElement>) => {
+		const file = event.target.files?.[0];
+		if (!file) return;
+
+		setSaving(true);
+		setMessage('');
+		try {
+			const imported = JSON.parse(await file.text());
+			const response = await fetch('/api/settings/shortcuts/import', {
+				method: 'POST',
+				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+				body: JSON.stringify(imported),
+			});
+			const data = await response.json() as { shortcutGroups?: ShortcutGroupConfig[]; error?: string };
+			if (!response.ok || !data.shortcutGroups) {
+				throw new Error(data.error ?? 'Could not import shortcuts.');
+			}
+
+			setGroups(data.shortcutGroups);
+			setNewShortcutGroupId(data.shortcutGroups[0]?.id ?? '');
+			setEditingShortcutId(null);
+			setConfirmDeleteId(null);
+			setMessage('Shortcuts imported. Existing shortcuts were replaced.');
+		} catch (caught) {
+			setMessage(caught instanceof SyntaxError
+				? 'That file is not valid JSON.'
+				: caught instanceof Error ? caught.message : 'Could not import shortcuts.');
+		} finally {
+			event.target.value = '';
+			setSaving(false);
+		}
+	};
+
 	const filteredRepositories = (repositoryCatalog?.repositories ?? []).filter(repository => {
 		return fuzzyMatch(`${repository.fullName} ${repository.owner} ${repository.name}`, repositorySearch);
 	});
@@ -489,7 +534,7 @@ export default function Settings() {
 			<div className="min-h-screen bg-background text-foreground antialiased">
 				<main className="settings-shell">
 					<header className="settings-header">
-						<Button variant="ghost" render={<a href="/" />}>
+					<Button variant="ghost" className="-ml-5" render={<a href="/" />}>
 							<ArrowLeft aria-hidden="true" />
 							Dashboard
 						</Button>
@@ -510,7 +555,7 @@ export default function Settings() {
 											key={section.id}
 											className="settings-nav-item rounded-md"
 											data-active={activeSection === section.id}
-											onClick={() => { setActiveSection(section.id); setMessage(''); }}
+											onClick={() => selectSection(section.id)}
 										>
 											<Icon aria-hidden="true" />
 											{section.label}
@@ -579,7 +624,7 @@ export default function Settings() {
 												<h3 className="font-semibold">Repositories</h3>
 												<p className="text-sm text-muted-foreground">All selected repositories are searched for authored, review-requested, and reviewed pull requests updated in the last {pullRequestWindowDays} {pullRequestWindowDays === 1 ? 'day' : 'days'}.</p>
 											</div>
-											<Button type="button" variant="outline" onClick={() => void loadGithubRepositories()} disabled={loadingRepositories}>{loadingRepositories ? 'Loading…' : 'Refresh'}</Button>
+											<Button type="button" variant="outline" onClick={() => void loadGithubRepositories(true)} disabled={loadingRepositories}>{loadingRepositories ? 'Loading…' : 'Refresh'}</Button>
 										</div>
 										{repositoryCatalog && (
 											<div className="relative">
@@ -631,10 +676,10 @@ export default function Settings() {
 
 							{activeSection === 'shortcuts' && (
 								<section className="settings-panel rounded-lg" aria-labelledby="shortcut-settings-heading">
-									<div className="flex flex-wrap items-start justify-between gap-4">
+									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div>
 											<h2 id="shortcut-settings-heading" className="display-heading settings-section-title">Shortcuts</h2>
-											<p className="mt-1 text-sm text-muted-foreground">Drag shortcuts into the order you want on the dashboard.</p>
+											<p className="mt-1 text-sm text-muted-foreground">Choose how many shortcuts appear, then add, reorder, or edit them below.</p>
 										</div>
 										<BookmarkImporter groups={groups} onImported={handleImported} />
 									</div>
@@ -645,24 +690,25 @@ export default function Settings() {
 										</div>
 										<Button type="button" variant="outline" className="shrink-0" onClick={saveShortcutLimit} disabled={saving}>Save limit</Button>
 									</div>
-									<form onSubmit={addShortcut} className="grid gap-3 rounded-lg border p-4">
-										<h3 className="font-semibold">Add shortcut</h3>
-										{groups.length > 1 && <div className="grid gap-2"><Label htmlFor="new-shortcut-group">Group</Label><Select id="new-shortcut-group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</Select></div>}
-										<div className="settings-form-grid">
-											<div className="grid gap-2"><Label htmlFor="new-shortcut-label">Label</Label><Input id="new-shortcut-label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} maxLength={60} required /></div>
-											<div className="grid gap-2"><Label htmlFor="new-shortcut-url">URL</Label><Input id="new-shortcut-url" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required /></div>
-										</div>
-										<div className="flex justify-end"><Button type="submit" disabled={saving || groups.length === 0}><Plus />{saving ? 'Adding…' : 'Add shortcut'}</Button></div>
-									</form>
 									{groups.length === 0 && <p className="text-muted-foreground">No shortcut groups configured.</p>}
 									{groups.map(group => (
 										<div key={group.id} className="grid gap-3">
 											<h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
 											<div className="shortcut-sort-list" onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, group.id)}>
+												{group.id === newShortcutGroupId && (
+													<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
+														<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-3' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
+															{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Shortcut group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
+															<Input id="new-shortcut-label" aria-label="Shortcut label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
+															<Input id="new-shortcut-url" aria-label="Shortcut URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
+														</div>
+														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>{saving ? 'Adding…' : 'Add'}</Button>
+													</form>
+												)}
 												{group.shortcuts.map((shortcut, index) => (
 													<div
 														key={shortcut.id}
-														className="shortcut-sort-item rounded-md"
+														className="shortcut-sort-item rounded-lg"
 														draggable={editingShortcutId !== shortcut.id}
 														data-dragging={dragged?.shortcutId === shortcut.id}
 														onDragStart={event => { setDragged({ groupId: group.id, shortcutId: shortcut.id }); event.dataTransfer.effectAllowed = 'move'; }}
@@ -692,6 +738,23 @@ export default function Settings() {
 											</div>
 										</div>
 									))}
+									<div className="grid gap-3 border-t pt-6">
+										<div>
+											<h3 className="font-semibold">Backup and restore</h3>
+											<p className="mt-1 text-sm text-muted-foreground">Export shortcuts to another dashboard instance. Importing replaces the shortcuts currently stored here.</p>
+										</div>
+										<div className="flex flex-wrap gap-2">
+											<Button variant="outline" render={<a href="/api/settings/shortcuts/export" download />}>
+												<Download aria-hidden="true" />
+												Export shortcuts
+											</Button>
+											<input ref={shortcutImportRef} className="sr-only" type="file" accept=".json,application/json" onChange={importShortcutSettings} />
+											<Button type="button" variant="outline" onClick={() => shortcutImportRef.current?.click()} disabled={saving}>
+												<Upload aria-hidden="true" />
+												Import shortcuts
+											</Button>
+										</div>
+									</div>
 								</section>
 							)}
 

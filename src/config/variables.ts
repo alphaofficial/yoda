@@ -85,6 +85,14 @@ const variables = {
 		}
 		return value;
 	})(),
+	GITHUB_REPOSITORY_CACHE_TTL_SECONDS: (() => {
+		const raw = envValue('GITHUB_REPOSITORY_CACHE_TTL_SECONDS');
+		const value = raw ? Number(raw) : 900;
+		if (Number.isNaN(value) || !Number.isInteger(value) || value < 60 || value > 86400) {
+			throw new Error('GITHUB_REPOSITORY_CACHE_TTL_SECONDS must be an integer from 60 to 86400');
+		}
+		return value;
+	})(),
 	DASHBOARD_REQUEST_TIMEOUT_MS: (() => {
 		const raw = envValue('DASHBOARD_REQUEST_TIMEOUT_MS');
 		const value = raw ? Number(raw) : 5000;

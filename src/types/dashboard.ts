@@ -96,6 +96,12 @@ export interface DashboardConfig {
 	shortcutGroups: ShortcutGroupConfig[];
 }
 
+export interface ShortcutSettingsExport {
+	version: 1;
+	exportedAt: string;
+	shortcutGroups: ShortcutGroupConfig[];
+}
+
 export interface AddShortcutInput {
 	groupId: string;
 	label: string;

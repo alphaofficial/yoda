@@ -1,27 +1,25 @@
-# Stage 1: Build
-FROM node:22-alpine AS builder
+FROM node:22
 
 WORKDIR /usr/src/app
 
 COPY package*.json ./
-RUN npm ci
+
+RUN npm i -g pm2 && \
+    pm2 install pm2-logrotate && \
+    pm2 set pm2-logrotate:max_size 5M && \
+    pm2 set pm2-logrotate:retain 1 && \
+    pm2 set pm2-logrotate:compress true && \
+    pm2 set pm2-logrotate:rotateInterval '0 0 */3 * *'
+
+RUN npm install --include=dev
 
 COPY . .
+
 RUN npm run build
 
-# Stage 2: Runtime
-FROM node:22-alpine
+COPY start.sh /usr/src/app/start.sh
+RUN chmod +x /usr/src/app/start.sh
 
-WORKDIR /usr/src/app
+EXPOSE 3333
 
-COPY --from=builder --chown=node:nodejs /usr/src/app/node_modules ./node_modules
-COPY --from=builder --chown=node:nodejs /usr/src/app/dist ./dist
-COPY --from=builder --chown=node:nodejs /usr/src/app/public ./public
-COPY --from=builder --chown=node:nodejs /usr/src/app/start.sh ./start.sh
-COPY --from=builder --chown=node:nodejs /usr/src/app/ecosystem.config.js ./ecosystem.config.js
-
-USER node
-
-EXPOSE 3000
-
-CMD ["sh", "start.sh"]
+CMD ["./start.sh"]
