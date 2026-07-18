@@ -1,4 +1,5 @@
 import { Head, usePage } from '@inertiajs/react';
+import CalendarPanel from '@/views/components/dashboard/CalendarPanel';
 import GreetingHeader from '@/views/components/dashboard/GreetingHeader';
 import IntegrationState from '@/views/components/dashboard/IntegrationState';
 import PullRequestPanel from '@/views/components/dashboard/PullRequestPanel';
@@ -40,7 +41,12 @@ export default function Home() {
 						<aside
 							className="col-span-4 max-md:col-span-1"
 							aria-label="Sidebar"
-						></aside>
+						>
+							<CalendarPanel
+								calendar={dashboard.calendar}
+								timeZone={dashboard.timeZone}
+							/>
+						</aside>
 					</div>
 				</main>
 			</div>
