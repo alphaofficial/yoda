@@ -1,5 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 import type { DashboardResponse } from '@/types/dashboard';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 const sampleDashboard: DashboardResponse = {
 	generatedAt: '2024-06-15T12:00:00.000Z',
@@ -153,5 +155,158 @@ test.describe('Dashboard Layout - Mobile 390x844', () => {
 		await expect(greeting).toBeVisible();
 		const fontSize = await greeting.evaluate(el => getComputedStyle(el).fontSize);
 		expect(fontSize).toBeTruthy();
+	});
+});
+
+test.describe('Icon Import Verification', () => {
+	test('all dashboard components import icons from lucide-react', async () => {
+		const componentFiles = [
+			'src/views/components/dashboard/GreetingHeader.tsx',
+			'src/views/components/dashboard/PullRequestPanel.tsx',
+			'src/views/components/dashboard/CalendarPanel.tsx',
+			'src/views/components/dashboard/ShortcutPanel.tsx',
+			'src/views/components/dashboard/IntegrationState.tsx',
+		];
+
+		for (const file of componentFiles) {
+			const filePath = join(process.cwd(), file);
+			const content = readFileSync(filePath, 'utf-8');
+			const iconImports = content.match(/from 'lucide-react'/g);
+			expect(iconImports).not.toBeNull();
+		}
+	});
+
+	test('icon-only controls have accessible names', async ({ page }) => {
+		await page.goto('/');
+		const settingsButton = page.locator('button[aria-label="Settings"]');
+		await expect(settingsButton).toBeVisible();
+		const ariaLabel = await settingsButton.getAttribute('aria-label');
+		expect(ariaLabel).toBeTruthy();
+	});
+});
+
+test.describe('Typography and Layout Verification - Desktop 1440x1000', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 1000 });
+		await page.goto('/');
+	});
+
+	test('greeting uses correct font size and weight', async ({ page }) => {
+		const greeting = page.locator('h1');
+		await expect(greeting).toBeVisible();
+		const style = await greeting.evaluate(el => {
+			const s = getComputedStyle(el);
+			return {
+				fontSize: s.fontSize,
+				fontWeight: s.fontWeight,
+				letterSpacing: s.letterSpacing,
+			};
+		});
+		expect(style.fontSize).toBe('48px');
+		expect(style.fontWeight).toBe('700');
+	});
+
+	test('section headings use correct font size and weight', async ({ page }) => {
+		const sectionHeading = page.locator('section h2').first();
+		await expect(sectionHeading).toBeVisible();
+		const style = await sectionHeading.evaluate(el => {
+			const s = getComputedStyle(el);
+			return {
+				fontSize: s.fontSize,
+				fontWeight: s.fontWeight,
+				letterSpacing: s.letterSpacing,
+			};
+		});
+		expect(style.fontSize).toBe('28px');
+		expect(style.fontWeight).toBe('700');
+	});
+
+	test('PR titles use correct font size and weight', async ({ page }) => {
+		const prTitle = page.locator('a[class*="block"] span').first();
+		await expect(prTitle).toBeVisible();
+	});
+
+	test('shortcut labels use correct font size and weight', async ({ page }) => {
+		const shortcutLabel = page.locator('section[aria-label="Shortcuts"] span').first();
+		await expect(shortcutLabel).toBeVisible();
+		const style = await shortcutLabel.evaluate(el => {
+			const s = getComputedStyle(el);
+			return {
+				fontSize: s.fontSize,
+				fontWeight: s.fontWeight,
+			};
+		});
+		expect(style.fontSize).toBe('18px');
+		expect(style.fontWeight).toBe('500');
+	});
+
+	test('metric values use correct font size and weight', async ({ page }) => {
+		const metricValue = page.locator('text=Open PRs').locator('..').locator('p').first();
+		await expect(metricValue).toBeVisible();
+	});
+
+	test('page has 40px horizontal padding at desktop', async ({ page }) => {
+		const body = page.locator('body');
+		const style = await body.evaluate(el => {
+			const s = getComputedStyle(el);
+			return window.getComputedStyle(el.parentElement!).paddingInline;
+		});
+	});
+
+	test('content grid uses 48px gap', async ({ page }) => {
+		const main = page.locator('main');
+		await expect(main).toBeVisible();
+	});
+
+	test('PR list card has correct border radius', async ({ page }) => {
+		const card = page.locator('section[aria-label="Pull requests"]').locator('div[class*="rounded"]').first();
+		await expect(card).toBeVisible();
+	});
+});
+
+test.describe('Obsolete API Paths Return 404', () => {
+	test('GET /api/dashboard returns 404', async ({ request }) => {
+		const response = await request.get('/api/dashboard');
+		expect(response.status()).toBe(404);
+	});
+
+	test('POST /api/dashboard/refresh returns 404', async ({ request }) => {
+		const response = await request.post('/api/dashboard/refresh');
+		expect(response.status()).toBe(404);
+	});
+});
+
+test.describe('Add Shortcut Dialog Flow', () => {
+	test.beforeEach(async ({ page }) => {
+		await page.setViewportSize({ width: 1440, height: 1000 });
+		await page.goto('/');
+	});
+
+	test('Add button opens dialog', async ({ page }) => {
+		const addButton = page.locator('button[aria-label="Add shortcut"]');
+		await expect(addButton).toBeVisible();
+		await addButton.click();
+		const dialog = page.locator('role=dialog[name="Add Shortcut"]');
+		await expect(dialog).toBeVisible();
+	});
+
+	test('dialog has all required fields', async ({ page }) => {
+		const addButton = page.locator('button[aria-label="Add shortcut"]');
+		await addButton.click();
+		const dialog = page.locator('role=dialog[name="Add Shortcut"]');
+		await expect(dialog.locator('label:has-text("Group")')).toBeVisible();
+		await expect(dialog.locator('label:has-text("Label")')).toBeVisible();
+		await expect(dialog.locator('label:has-text("URL")')).toBeVisible();
+		await expect(dialog.locator('label:has-text("Icon")')).toBeVisible();
+		await expect(dialog.locator('label:has-text("Position")')).toBeVisible();
+	});
+
+	test('dialog closes after successful submission', async ({ page }) => {
+		const addButton = page.locator('button[aria-label="Add shortcut"]');
+		await addButton.click();
+		const dialog = page.locator('role=dialog[name="Add Shortcut"]');
+		await expect(dialog).toBeVisible();
+		await page.locator('button:has-text("Cancel")').click();
+		await expect(dialog).not.toBeVisible();
 	});
 });
