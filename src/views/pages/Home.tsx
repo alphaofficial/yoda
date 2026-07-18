@@ -3,6 +3,7 @@ import CalendarPanel from '@/views/components/dashboard/CalendarPanel';
 import GreetingHeader from '@/views/components/dashboard/GreetingHeader';
 import IntegrationState from '@/views/components/dashboard/IntegrationState';
 import PullRequestPanel from '@/views/components/dashboard/PullRequestPanel';
+import ShortcutPanel from '@/views/components/dashboard/ShortcutPanel';
 import type { DashboardResponse } from '@/types/dashboard';
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
@@ -42,10 +43,15 @@ export default function Home() {
 							className="col-span-4 max-md:col-span-1"
 							aria-label="Sidebar"
 						>
-							<CalendarPanel
-								calendar={dashboard.calendar}
-								timeZone={dashboard.timeZone}
+							<ShortcutPanel
+								shortcutGroups={dashboard.shortcutGroups}
 							/>
+							<div className="mt-8">
+								<CalendarPanel
+									calendar={dashboard.calendar}
+									timeZone={dashboard.timeZone}
+								/>
+							</div>
 						</aside>
 					</div>
 				</main>
