@@ -1,0 +1,11 @@
+.git
+.ralph
+.env
+node_modules
+dist
+public/app.js
+public/main.css
+test
+*.log
+*.db
+*.db-journal
