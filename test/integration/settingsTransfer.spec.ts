@@ -51,8 +51,8 @@ function createApp() {
 		(req as any).ctx = { db: { fork: vi.fn(() => ({})) } };
 		next();
 	});
-	app.get('/api/settings/shortcuts/export', exportShortcuts);
-	app.post('/api/settings/shortcuts/import', importShortcuts);
+	app.get('/settings/shortcuts/export', exportShortcuts);
+	app.post('/settings/shortcuts/import', importShortcuts);
 	return app;
 }
 
@@ -64,7 +64,7 @@ describe('shortcut settings transfer routes', () => {
 	});
 
 	it('exports only shortcut groups', async () => {
-		const response = await request(createApp()).get('/api/settings/shortcuts/export');
+		const response = await request(createApp()).get('/settings/shortcuts/export');
 
 		expect(response.status).toBe(200);
 		expect(response.headers['content-disposition']).toMatch(/^attachment; filename="yoda-shortcuts-\d{4}-\d{2}-\d{2}\.json"$/);
@@ -77,7 +77,7 @@ describe('shortcut settings transfer routes', () => {
 	it('imports shortcut groups and invalidates the dashboard snapshot', async () => {
 		const payload = { version: 1, exportedAt: '2026-07-18T12:00:00.000Z', shortcutGroups };
 		const response = await request(createApp())
-			.post('/api/settings/shortcuts/import')
+			.post('/settings/shortcuts/import')
 			.send(payload);
 
 		expect(response.status).toBe(200);
@@ -88,7 +88,7 @@ describe('shortcut settings transfer routes', () => {
 
 	it('rejects an invalid shortcut export', async () => {
 		const response = await request(createApp())
-			.post('/api/settings/shortcuts/import')
+			.post('/settings/shortcuts/import')
 			.send({ version: 9, shortcutGroups: [] });
 
 		expect(response.status).toBe(422);

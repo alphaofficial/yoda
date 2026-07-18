@@ -1,13 +1,5 @@
 <h1 align="center">Yoda</h1>
 
-<h3 align="center">A self-hosted dev dashboard for pull requests, shortcuts, and the links you open every day.</h3>
-
-<p align="center">
-  <img src="https://img.shields.io/badge/node-22-000000?style=flat&colorA=000000&colorB=000000" alt="Node 22" />
-  <img src="https://img.shields.io/badge/react-19-000000?style=flat&colorA=000000&colorB=000000" alt="React 19" />
-  <img src="https://img.shields.io/badge/license-MIT-000000?style=flat&colorA=000000&colorB=000000" alt="MIT License" />
-</p>
-
 `yoda` is a private, self-hosted dashboard for replacing your browser home page with GitHub pull request context and persistent shortcuts.
 
 ## Quick start
@@ -26,7 +18,7 @@ The default example uses `http://localhost:3000`, while the server fallback port
 
 ## Configuration
 
-### Required production secrets
+### Required production variables
 
 Set these before running with `NODE_ENV=production`:
 
@@ -132,16 +124,15 @@ GitHub credentials are stored in SQLite and are not included in shortcut exports
 | --- | --- |
 | `GET /` | Dashboard page. |
 | `GET /settings` | Settings page. |
-| `GET /api/settings` | Current dashboard settings without exposing the GitHub token. |
-| `PATCH /api/settings` | Update display, theme, time, token, and dashboard settings. |
-| `GET /api/settings/shortcuts/export` | Download shortcut settings as JSON. |
-| `POST /api/settings/shortcuts/import` | Replace shortcuts from an exported JSON payload. |
-| `PUT /api/settings/repositories` | Replace selected GitHub repositories. |
-| `GET /api/settings/github/repositories` | Discover repositories available to the configured token. |
-| `POST /api/shortcuts` | Create a shortcut. |
-| `PATCH /api/shortcuts/:id` | Update a shortcut. |
-| `DELETE /api/shortcuts/:id` | Delete a shortcut. |
-| `PUT /api/shortcuts/reorder` | Reorder shortcuts inside a group. |
+| `PATCH /settings` | Update display, theme, time, token, and dashboard settings. |
+| `GET /settings/shortcuts/export` | Download shortcut settings as JSON. |
+| `POST /settings/shortcuts/import` | Replace shortcuts from an exported JSON payload. |
+| `GET /settings/github/repositories` | Discover repositories available to the configured token. |
+| `PUT /settings/github/repositories` | Replace selected GitHub repositories. |
+| `POST /settings/shortcuts` | Create a shortcut. |
+| `PATCH /settings/shortcuts/:id` | Update a shortcut. |
+| `DELETE /settings/shortcuts/:id` | Delete a shortcut. |
+| `PUT /settings/shortcuts/reorder` | Reorder shortcuts inside a group. |
 
 ## Docker deployment
 

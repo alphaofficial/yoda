@@ -74,19 +74,6 @@ test.describe('Dashboard Shell', () => {
 		await expect(page.locator('text=Last refresh:')).toBeVisible();
 	});
 
-	test('does not make unwanted API requests for dashboard data', async ({ page }) => {
-		const requests: string[] = [];
-		page.on('request', request => {
-			const url = request.url();
-			if (url.includes('/api/dashboard')) {
-				requests.push(url);
-			}
-		});
-
-		await page.reload();
-		expect(requests).toHaveLength(0);
-	});
-
 	test('document title includes Dashboard', async ({ page }) => {
 		await expect(page).toHaveTitle(/Dashboard/);
 	});
@@ -253,18 +240,6 @@ test.describe('Typography and Layout Verification - Desktop 1440x1000', () => {
 	test('PR list card has correct border radius', async ({ page }) => {
 		const card = page.locator('section[aria-label="Pull requests"]').locator('div[class*="rounded"]').first();
 		await expect(card).toBeVisible();
-	});
-});
-
-test.describe('Obsolete API Paths Return 404', () => {
-	test('GET /api/dashboard returns 404', async ({ request }) => {
-		const response = await request.get('/api/dashboard');
-		expect(response.status()).toBe(404);
-	});
-
-	test('POST /api/dashboard/refresh returns 404', async ({ request }) => {
-		const response = await request.post('/api/dashboard/refresh');
-		expect(response.status()).toBe(404);
 	});
 });
 

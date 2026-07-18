@@ -139,7 +139,7 @@ function BookmarkImporter({
 
 		try {
 			for (const bookmark of selected) {
-				const response = await fetch('/api/shortcuts', {
+				const response = await fetch('/settings/shortcuts', {
 					method: 'POST',
 					headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 					body: JSON.stringify({ groupId, label: bookmark.label.slice(0, 60), url: bookmark.url, icon: 'link' }),
@@ -259,7 +259,7 @@ export default function Settings() {
 		setLoadingRepositories(true);
 		setRepositoryError('');
 		try {
-			const response = await fetch(`/api/settings/github/repositories${refresh ? '?refresh=1' : ''}`, { headers: { 'Accept': 'application/json' } });
+			const response = await fetch(`/settings/github/repositories${refresh ? '?refresh=1' : ''}`, { headers: { 'Accept': 'application/json' } });
 			if (!response.ok) throw new Error(response.status === 401 ? 'Save a GitHub token before loading repositories.' : 'Could not load repositories from GitHub.');
 			const data = await response.json() as GitHubRepositoryCatalog & { selectedScopes: string[] };
 			setRepositoryCatalog(data);
@@ -295,7 +295,7 @@ export default function Settings() {
 		setSaving(true);
 		setMessage('');
 		try {
-			const response = await fetch('/api/settings', {
+			const response = await fetch('/settings', {
 				method: 'PATCH',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ displayName, timeZone, timeFormat, theme }),
@@ -314,7 +314,7 @@ export default function Settings() {
 		setMessage('');
 		try {
 			const replacingToken = token.trim().length > 0;
-			const settingsResponse = await fetch('/api/settings', {
+			const settingsResponse = await fetch('/settings', {
 				method: 'PATCH',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ githubToken: token || undefined, pullRequestWindowDays }),
@@ -322,7 +322,7 @@ export default function Settings() {
 			if (!settingsResponse.ok) throw new Error('Could not save the GitHub token.');
 
 			if (repositoryCatalog && !replacingToken) {
-				const repositoriesResponse = await fetch('/api/settings/repositories', {
+				const repositoriesResponse = await fetch('/settings/github/repositories', {
 					method: 'PUT',
 					headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 					body: JSON.stringify({ repositories: selectedRepositories }),
@@ -354,7 +354,7 @@ export default function Settings() {
 		setSaving(true);
 		setMessage('');
 		try {
-			const response = await fetch('/api/shortcuts', {
+			const response = await fetch('/settings/shortcuts', {
 				method: 'POST',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ groupId: newShortcutGroupId, label: newShortcutLabel, url: newShortcutUrl, icon: 'link' }),
@@ -383,7 +383,7 @@ export default function Settings() {
 		setSaving(true);
 		setMessage('');
 		try {
-			const response = await fetch(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, {
+			const response = await fetch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 				method: 'PATCH',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ label: editingShortcutLabel, url: editingShortcutUrl }),
@@ -407,7 +407,7 @@ export default function Settings() {
 		setSaving(true);
 		setMessage('');
 		try {
-			const response = await fetch(`/api/shortcuts/${encodeURIComponent(shortcutId)}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
+			const response = await fetch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
 			if (!response.ok) throw new Error('Could not remove shortcut.');
 			setGroups(current => current.map(group => ({ ...group, shortcuts: group.shortcuts.filter(shortcut => shortcut.id !== shortcutId) })));
 			setConfirmDeleteId(null);
@@ -423,7 +423,7 @@ export default function Settings() {
 		setSaving(true);
 		setMessage('');
 		try {
-			const response = await fetch('/api/settings', {
+			const response = await fetch('/settings', {
 				method: 'PATCH',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ shortcutLimit }),
@@ -441,7 +441,7 @@ export default function Settings() {
 		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: nextShortcuts } : group));
 		setMessage('Saving shortcut order…');
 		try {
-			const response = await fetch('/api/shortcuts/reorder', {
+			const response = await fetch('/settings/shortcuts/reorder', {
 				method: 'PUT',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify({ groupId, shortcutIds: nextShortcuts.map(shortcut => shortcut.id) }),
@@ -499,7 +499,7 @@ export default function Settings() {
 		setMessage('');
 		try {
 			const imported = JSON.parse(await file.text());
-			const response = await fetch('/api/settings/shortcuts/import', {
+			const response = await fetch('/settings/shortcuts/import', {
 				method: 'POST',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
 				body: JSON.stringify(imported),
@@ -776,7 +776,7 @@ export default function Settings() {
 											<p className="mt-1 text-sm text-muted-foreground">Export shortcuts to another dashboard instance. Importing replaces the shortcuts currently stored here.</p>
 										</div>
 										<div className="flex flex-wrap gap-2">
-											<Button variant="outline" render={<a href="/api/settings/shortcuts/export" download />}>
+											<Button variant="outline" render={<a href="/settings/shortcuts/export" download />}>
 												<Download aria-hidden="true" />
 												Export shortcuts
 											</Button>

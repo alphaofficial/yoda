@@ -43,11 +43,6 @@ export async function settingsIndex(req: Request, res: Response) {
 	});
 }
 
-export async function getSettings(req: Request, res: Response) {
-	const config = await repository(req).getConfig();
-	return res.json(settingsResponse(config));
-}
-
 export async function updateSettings(req: Request, res: Response) {
 	const config = await repository(req).updateSettings(req.body);
 	await invalidateDashboardSnapshot(config);

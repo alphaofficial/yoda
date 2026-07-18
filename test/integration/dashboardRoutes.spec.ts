@@ -58,7 +58,7 @@ function createTestApp() {
 	});
 
 	app.get('/', dashboardIndex);
-	app.post('/api/shortcuts', createShortcut);
+	app.post('/settings/shortcuts', createShortcut);
 	app.use((err: Error, _req: express.Request, _res: express.Response, _next: express.NextFunction) => {
 		throw err;
 	});
@@ -158,21 +158,7 @@ describe('Dashboard Routes', () => {
 		});
 	});
 
-	describe('GET /api/dashboard', () => {
-		it('returns 404', async () => {
-			const res = await request(app).get('/api/dashboard');
-			expect(res.status).toBe(404);
-		});
-	});
-
-	describe('POST /api/dashboard/refresh', () => {
-		it('returns 404', async () => {
-			const res = await request(app).post('/api/dashboard/refresh');
-			expect(res.status).toBe(404);
-		});
-	});
-
-	describe('POST /api/shortcuts', () => {
+	describe('POST /settings/shortcuts', () => {
 		it('returns 201 with shortcut on valid input', async () => {
 			const input = {
 				groupId: 'shortcuts',
@@ -182,7 +168,7 @@ describe('Dashboard Routes', () => {
 			};
 
 			const res = await request(app)
-				.post('/api/shortcuts')
+				.post('/settings/shortcuts')
 				.send(input)
 				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
@@ -205,7 +191,7 @@ describe('Dashboard Routes', () => {
 			});
 
 			const res = await request(app)
-				.post('/api/shortcuts')
+				.post('/settings/shortcuts')
 				.send({ groupId: 'invalid group', label: '', url: 'bad', icon: 'invalid' })
 				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
@@ -219,7 +205,7 @@ describe('Dashboard Routes', () => {
 
 		it('returns 400 for malformed JSON', async () => {
 			const res = await request(app)
-				.post('/api/shortcuts')
+				.post('/settings/shortcuts')
 				.send('{ invalid json }')
 				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
@@ -236,7 +222,7 @@ describe('Dashboard Routes', () => {
 			});
 
 			const res = await request(app)
-				.post('/api/shortcuts')
+				.post('/settings/shortcuts')
 				.send({ groupId: 'shortcuts', label: 'Test', url: 'https://example.com', icon: 'link' })
 				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');

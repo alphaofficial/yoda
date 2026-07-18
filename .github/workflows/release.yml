@@ -2,6 +2,11 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      release_summary:
+        description: Optional Markdown shown before the generated release notes
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -25,12 +30,33 @@ jobs:
           node-version: 22
 
       - name: Release
+        id: release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          git tag --points-at HEAD --list 'v*' | sort -V > "$RUNNER_TEMP/release-tags-before.txt"
           npx --yes \
             --package semantic-release \
             --package @semantic-release/github \
             --package @semantic-release/commit-analyzer \
             --package @semantic-release/release-notes-generator \
             semantic-release
+          git tag --points-at HEAD --list 'v*' | sort -V > "$RUNNER_TEMP/release-tags-after.txt"
+          tag="$(comm -13 "$RUNNER_TEMP/release-tags-before.txt" "$RUNNER_TEMP/release-tags-after.txt" | tail -n 1)"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Add release summary
+        if: ${{ steps.release.outputs.tag != '' && inputs.release_summary != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+          RELEASE_SUMMARY: ${{ inputs.release_summary }}
+        run: |
+          generated_notes="$RUNNER_TEMP/generated-release-notes.md"
+          release_notes="$RUNNER_TEMP/release-notes.md"
+          gh release view "$RELEASE_TAG" --json body --jq '.body // ""' > "$generated_notes"
+          {
+            printf '%s\n\n' "$RELEASE_SUMMARY"
+            sed -n '1,$p' "$generated_notes"
+          } > "$release_notes"
+          gh release edit "$RELEASE_TAG" --notes-file "$release_notes"
