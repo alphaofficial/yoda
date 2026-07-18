@@ -1,6 +1,7 @@
 import { Head, usePage } from '@inertiajs/react';
 import GreetingHeader from '@/views/components/dashboard/GreetingHeader';
 import IntegrationState from '@/views/components/dashboard/IntegrationState';
+import PullRequestPanel from '@/views/components/dashboard/PullRequestPanel';
 import type { DashboardResponse } from '@/types/dashboard';
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
@@ -32,6 +33,9 @@ export default function Home() {
 								lastRefreshAt={dashboard.lastRefreshAt}
 								stale={dashboard.stale}
 							/>
+							<div className="mt-16 max-md:mt-10">
+								<PullRequestPanel pullRequests={dashboard.pullRequests} />
+							</div>
 						</section>
 						<aside
 							className="col-span-4 max-md:col-span-1"
