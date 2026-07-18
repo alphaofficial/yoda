@@ -40,6 +40,7 @@ function createTestApp() {
 	app.use(express.json());
 	app.use((req, _res, next) => {
 		(req as any).ctx = { db: { fork: vi.fn(() => ({})) } };
+		(req as any).session = {};
 		next();
 	});
 	app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
@@ -159,7 +160,7 @@ describe('Dashboard Routes', () => {
 	});
 
 	describe('POST /settings/shortcuts', () => {
-		it('returns 201 with shortcut on valid input', async () => {
+		it('redirects to shortcut settings on valid input', async () => {
 			const input = {
 				groupId: 'shortcuts',
 				label: 'New Shortcut',
@@ -170,22 +171,14 @@ describe('Dashboard Routes', () => {
 			const res = await request(app)
 				.post('/settings/shortcuts')
 				.send(input)
-				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
 
-			expect(res.status).toBe(201);
-			expect(res.body).toEqual({
-				shortcut: {
-					id: 'new-shortcut',
-					label: 'New Shortcut',
-					url: 'https://example.com',
-					icon: 'link',
-				},
-			});
+			expect(res.status).toBe(303);
+			expect(res.headers.location).toBe('/settings?section=shortcuts');
 			expect(routeMocks.addShortcut).toHaveBeenCalledWith(input);
 		});
 
-		it('returns 422 with field errors on validation failure', async () => {
+		it('redirects validation failures to shortcut settings', async () => {
 			routeMocks.addShortcut.mockImplementation(() => {
 				throw new ShortcutValidationError('Invalid shortcut', { url: 'URL is invalid' });
 			});
@@ -193,14 +186,10 @@ describe('Dashboard Routes', () => {
 			const res = await request(app)
 				.post('/settings/shortcuts')
 				.send({ groupId: 'invalid group', label: '', url: 'bad', icon: 'invalid' })
-				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
 
-			expect(res.status).toBe(422);
-			expect(res.body).toEqual({
-				error: 'Invalid shortcut',
-				fields: { url: 'URL is invalid' },
-			});
+			expect(res.status).toBe(303);
+			expect(res.headers.location).toBe('/settings?section=shortcuts');
 		});
 
 		it('returns 400 for malformed JSON', async () => {
@@ -213,7 +202,7 @@ describe('Dashboard Routes', () => {
 			expect(res.status).toBe(400);
 		});
 
-		it('does not expose credentials in response', async () => {
+		it('does not expose credentials in the redirect response', async () => {
 			routeMocks.addShortcut.mockResolvedValue({
 				id: 'test',
 				label: 'Test',
@@ -224,10 +213,9 @@ describe('Dashboard Routes', () => {
 			const res = await request(app)
 				.post('/settings/shortcuts')
 				.send({ groupId: 'shortcuts', label: 'Test', url: 'https://example.com', icon: 'link' })
-				.set('Accept', 'application/json')
 				.set('Content-Type', 'application/json');
 
-			expect(res.status).toBe(201);
+			expect(res.status).toBe(303);
 			const responseStr = JSON.stringify(res.body);
 			expect(responseStr).not.toContain('token');
 			expect(responseStr).not.toContain('secret');

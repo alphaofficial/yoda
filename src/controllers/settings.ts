@@ -1,10 +1,11 @@
 import { type Request, type Response } from 'express';
 import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
 import { invalidateDashboardSnapshot, primeDashboardSnapshot } from '@/core/dashboard';
-import { getCachedGitHubRepositoryCatalog, getGitHubRepositoryCatalog } from '@/core/githubRepositories';
+import { getGitHubRepositoryCatalog } from '@/core/githubRepositories';
 import { createShortcutSettingsExport, validateShortcutSettingsImport } from '@/config/dashboard';
 import { DashboardConfigError } from '@/types/dashboard';
 import type { DashboardConfig } from '@/types/dashboard';
+import { consumeSettingsFeedback, redirectToSettings, type SettingsSection } from '@/controllers/settingsRedirect';
 
 function repository(req: Request) {
 	return new DashboardConfigRepository(req.ctx.db.fork());
@@ -28,25 +29,50 @@ export async function settingsIndex(req: Request, res: Response) {
 	const config = await repository(req).getConfig();
 	await primeDashboardSnapshot(config);
 	const requestedSection = typeof req.query.section === 'string' ? req.query.section : '';
-	const activeSection = ['general', 'github', 'shortcuts'].includes(requestedSection) ? requestedSection : 'general';
-	const catalog = activeSection === 'github' && config.githubToken
-		? await getCachedGitHubRepositoryCatalog(config.githubToken)
-		: undefined;
+	const activeSection: SettingsSection = requestedSection === 'github' || requestedSection === 'shortcuts' ? requestedSection : 'general';
+	let catalog;
+	let repositoryError = '';
+	if (activeSection === 'github' && config.githubToken) {
+		try {
+			catalog = await getGitHubRepositoryCatalog(config.githubToken, req.query.refresh === '1');
+		} catch (error) {
+			repositoryError = error instanceof Error ? error.message : 'Could not load repositories from GitHub.';
+		}
+	}
 	return res.render('Settings', {
 		_theme: config.theme ?? 'light',
 		activeSection,
+		feedback: consumeSettingsFeedback(req),
 		repositoryCatalog: catalog ? {
 			...catalog,
 			selectedScopes: config.github.repositories.length > 0 ? config.github.repositories : catalog.defaultScopes,
 		} : null,
+		repositoryError,
 		settings: settingsResponse(config),
 	});
 }
 
 export async function updateSettings(req: Request, res: Response) {
-	const config = await repository(req).updateSettings(req.body);
-	await invalidateDashboardSnapshot(config);
-	return res.json(settingsResponse(config));
+	const requestedSection = typeof req.query.section === 'string' ? req.query.section : '';
+	const section: SettingsSection = requestedSection === 'github' || requestedSection === 'shortcuts' ? requestedSection : 'general';
+	try {
+		const configRepository = repository(req);
+		await configRepository.updateSettings(req.body);
+		if (Array.isArray(req.body.repositories)) {
+			await configRepository.setRepositories(req.body.repositories);
+		}
+		const config = await configRepository.getConfig();
+		await invalidateDashboardSnapshot(config);
+		const message = section === 'github'
+			? 'GitHub settings saved.'
+			: section === 'shortcuts' ? 'Shortcut display limit saved.' : 'General settings saved.';
+		return redirectToSettings(req, res, section, { type: 'success', message });
+	} catch (error) {
+		if (error instanceof DashboardConfigError) {
+			return redirectToSettings(req, res, section, { type: 'error', message: error.message });
+		}
+		throw error;
+	}
 }
 
 export async function exportShortcuts(req: Request, res: Response) {
@@ -63,30 +89,11 @@ export async function importShortcuts(req: Request, res: Response) {
 		const configRepository = repository(req);
 		const config = await configRepository.importShortcuts(imported);
 		await invalidateDashboardSnapshot(config);
-		return res.json({ shortcutGroups: config.shortcutGroups });
+		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Shortcuts imported. Existing shortcuts were replaced.' });
 	} catch (error) {
 		if (error instanceof DashboardConfigError) {
-			return res.status(422).json({ error: error.message, fields: error.fields });
+			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: error.message });
 		}
 		throw error;
 	}
-}
-
-export async function updateRepositories(req: Request, res: Response) {
-	const repositories = Array.isArray(req.body.repositories) ? req.body.repositories : [];
-	const configRepository = repository(req);
-	await configRepository.setRepositories(repositories);
-	await invalidateDashboardSnapshot(await configRepository.getConfig());
-	return res.json({ repositories });
-}
-
-export async function getGitHubRepositories(req: Request, res: Response) {
-	const config = await repository(req).getConfig();
-	const token = config.githubToken;
-	if (!token) return res.status(401).json({ error: 'GitHub token is not configured' });
-	const catalog = await getGitHubRepositoryCatalog(token, req.query.refresh === '1');
-	return res.json({
-		...catalog,
-		selectedScopes: config.github.repositories.length > 0 ? config.github.repositories : catalog.defaultScopes,
-	});
 }

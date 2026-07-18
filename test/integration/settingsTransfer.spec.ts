@@ -49,6 +49,7 @@ function createApp() {
 	app.use(express.json());
 	app.use((req, _res, next) => {
 		(req as any).ctx = { db: { fork: vi.fn(() => ({})) } };
+		(req as any).session = {};
 		next();
 	});
 	app.get('/settings/shortcuts/export', exportShortcuts);
@@ -80,10 +81,10 @@ describe('shortcut settings transfer routes', () => {
 			.post('/settings/shortcuts/import')
 			.send(payload);
 
-		expect(response.status).toBe(200);
+		expect(response.status).toBe(303);
+		expect(response.headers.location).toBe('/settings?section=shortcuts');
 		expect(settingsMocks.importShortcuts).toHaveBeenCalledWith(shortcutGroups);
 		expect(settingsMocks.invalidateDashboardSnapshot).toHaveBeenCalledWith(config);
-		expect(response.body).toEqual({ shortcutGroups });
 	});
 
 	it('rejects an invalid shortcut export', async () => {
@@ -91,8 +92,8 @@ describe('shortcut settings transfer routes', () => {
 			.post('/settings/shortcuts/import')
 			.send({ version: 9, shortcutGroups: [] });
 
-		expect(response.status).toBe(422);
-		expect(response.body.error).toBe('Unsupported shortcut export version');
+		expect(response.status).toBe(303);
+		expect(response.headers.location).toBe('/settings?section=shortcuts');
 		expect(settingsMocks.importShortcuts).not.toHaveBeenCalled();
 	});
 });

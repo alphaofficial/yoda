@@ -1,5 +1,5 @@
-import { Head, usePage } from '@inertiajs/react';
-import { useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
+import { Head, router, usePage } from '@inertiajs/react';
+import { useEffect, useReducer, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import {
 	ArrowLeft,
 	ChevronDown,
@@ -43,7 +43,9 @@ interface SettingsData {
 interface PageProps extends InertiaPageProps {
 	applicationName: string;
 	activeSection: SettingsSection;
+	feedback: { type: 'success' | 'error'; message: string } | null;
 	repositoryCatalog: (GitHubRepositoryCatalog & { selectedScopes: string[] }) | null;
+	repositoryError: string;
 	settings: SettingsData;
 }
 
@@ -52,6 +54,55 @@ interface BookmarkCandidate {
 	label: string;
 	url: string;
 	selected: boolean;
+}
+
+interface BookmarkImporterState {
+	open: boolean;
+	bookmarks: BookmarkCandidate[];
+	groupId: string;
+	importing: boolean;
+	error: string;
+}
+
+type BookmarkImporterAction =
+	| { type: 'dialogChanged'; open: boolean }
+	| { type: 'fileReadStarted' }
+	| { type: 'bookmarksLoaded'; bookmarks: BookmarkCandidate[]; groupId: string }
+	| { type: 'groupChanged'; groupId: string }
+	| { type: 'selectionToggled'; bookmarkId: string }
+	| { type: 'allSelectionsToggled' }
+	| { type: 'importStarted' }
+	| { type: 'importFinished' }
+	| { type: 'failed'; message: string };
+
+function bookmarkImporterReducer(state: BookmarkImporterState, action: BookmarkImporterAction): BookmarkImporterState {
+	switch (action.type) {
+		case 'dialogChanged':
+			return { ...state, open: action.open };
+		case 'fileReadStarted':
+			return { ...state, error: '' };
+		case 'bookmarksLoaded':
+			return { ...state, open: true, bookmarks: action.bookmarks, groupId: action.groupId, error: '' };
+		case 'groupChanged':
+			return { ...state, groupId: action.groupId };
+		case 'selectionToggled':
+			return {
+				...state,
+				bookmarks: state.bookmarks.map(bookmark => bookmark.id === action.bookmarkId
+					? { ...bookmark, selected: !bookmark.selected }
+					: bookmark),
+			};
+		case 'allSelectionsToggled': {
+			const selectAll = !state.bookmarks.every(bookmark => bookmark.selected);
+			return { ...state, bookmarks: state.bookmarks.map(bookmark => ({ ...bookmark, selected: selectAll })) };
+		}
+		case 'importStarted':
+			return { ...state, importing: true, error: '' };
+		case 'importFinished':
+			return { ...state, importing: false };
+		case 'failed':
+			return { ...state, error: action.message };
+	}
 }
 
 const TOKEN_URL = 'https://github.com/settings/tokens/new?description=Personal%20Dashboard&scopes=repo,read:org';
@@ -85,17 +136,20 @@ function BookmarkImporter({
 	onImported,
 }: {
 	groups: ShortcutGroupConfig[];
-	onImported: (groupId: string, shortcuts: ShortcutItem[]) => void;
+	onImported: (groups: ShortcutGroupConfig[], message: string) => void;
 }) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
-	const [open, setOpen] = useState(false);
-	const [bookmarks, setBookmarks] = useState<BookmarkCandidate[]>([]);
-	const [groupId, setGroupId] = useState(groups[0]?.id ?? '');
-	const [importing, setImporting] = useState(false);
-	const [error, setError] = useState('');
+	const [state, dispatch] = useReducer(bookmarkImporterReducer, {
+		open: false,
+		bookmarks: [],
+		groupId: groups[0]?.id ?? '',
+		importing: false,
+		error: '',
+	});
+	const { open, bookmarks, groupId, importing, error } = state;
 
 	const readBookmarks = async (file: File) => {
-		setError('');
+		dispatch({ type: 'fileReadStarted' });
 		const html = await file.text();
 		const document = new DOMParser().parseFromString(html, 'text/html');
 		const existingUrls = new Set(groups.flatMap(group => group.shortcuts.map(shortcut => shortcut.url)));
@@ -115,13 +169,11 @@ function BookmarkImporter({
 			}));
 
 		if (parsed.length === 0) {
-			setError('No new web bookmarks were found in that file.');
+			dispatch({ type: 'failed', message: 'No new web bookmarks were found in that file.' });
 			return;
 		}
 
-		setBookmarks(parsed);
-		setGroupId(groups[0]?.id ?? '');
-		setOpen(true);
+		dispatch({ type: 'bookmarksLoaded', bookmarks: parsed, groupId: groups[0]?.id ?? '' });
 	};
 
 	const handleFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -130,36 +182,30 @@ function BookmarkImporter({
 		event.target.value = '';
 	};
 
-	const importSelected = async () => {
+	const importSelected = () => {
 		const selected = bookmarks.filter(bookmark => bookmark.selected);
 		if (!groupId || selected.length === 0) return;
-		setImporting(true);
-		setError('');
-		const imported: ShortcutItem[] = [];
-
-		try {
-			for (const bookmark of selected) {
-				const response = await fetch('/settings/shortcuts', {
-					method: 'POST',
-					headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-					body: JSON.stringify({ groupId, label: bookmark.label.slice(0, 60), url: bookmark.url, icon: 'link' }),
-				});
-				if (!response.ok) throw new Error(`Could not import ${bookmark.label}`);
-				const data = await response.json();
-				imported.push(data.shortcut);
-			}
-			onImported(groupId, imported);
-			setOpen(false);
-		} catch (caught) {
-			if (imported.length > 0) {
-				onImported(groupId, imported);
-				const importedUrls = new Set(imported.map(shortcut => shortcut.url));
-				setBookmarks(current => current.filter(bookmark => !importedUrls.has(bookmark.url)));
-			}
-			setError(caught instanceof Error ? caught.message : 'Could not import bookmarks.');
-		} finally {
-			setImporting(false);
-		}
+		dispatch({ type: 'importStarted' });
+		router.post('/settings/shortcuts/bookmarks', {
+			groupId,
+			shortcuts: selected.map(bookmark => ({ label: bookmark.label.slice(0, 60), url: bookmark.url })),
+		}, {
+			preserveScroll: true,
+			onSuccess: page => {
+				const nextProps = page.props as unknown as PageProps;
+				if (nextProps.feedback?.type === 'error') {
+					dispatch({ type: 'failed', message: nextProps.feedback.message });
+					return;
+				}
+				onImported(
+					nextProps.settings.shortcutGroups,
+					nextProps.feedback?.message ?? `${selected.length} bookmark${selected.length === 1 ? '' : 's'} imported.`,
+				);
+				dispatch({ type: 'dialogChanged', open: false });
+			},
+			onError: () => dispatch({ type: 'failed', message: 'Could not import bookmarks.' }),
+			onFinish: () => dispatch({ type: 'importFinished' }),
+		});
 	};
 
 	const selectedCount = bookmarks.filter(bookmark => bookmark.selected).length;
@@ -173,7 +219,7 @@ function BookmarkImporter({
 			</Button>
 			{error && !open && <p className="text-sm text-destructive" role="alert">{error}</p>}
 
-			<Dialog open={open} onOpenChange={setOpen}>
+			<Dialog open={open} onOpenChange={nextOpen => dispatch({ type: 'dialogChanged', open: nextOpen })}>
 				<DialogContent className="bookmark-dialog">
 					<DialogHeader>
 						<DialogTitle>Choose bookmarks</DialogTitle>
@@ -181,7 +227,7 @@ function BookmarkImporter({
 					<div className="grid gap-4">
 						<div className="grid gap-2">
 							<Label htmlFor="bookmark-group">Add to</Label>
-							<Select id="bookmark-group" value={groupId} onChange={event => setGroupId(event.target.value)}>
+							<Select id="bookmark-group" value={groupId} onChange={event => dispatch({ type: 'groupChanged', groupId: event.target.value })}>
 								{groups.map(group => <option key={group.id} value={group.id}>{group.label}</option>)}
 							</Select>
 						</div>
@@ -191,7 +237,7 @@ function BookmarkImporter({
 								type="button"
 								variant="ghost"
 								size="sm"
-								onClick={() => setBookmarks(items => items.map(item => ({ ...item, selected: selectedCount !== items.length })))}
+								onClick={() => dispatch({ type: 'allSelectionsToggled' })}
 							>
 								{selectedCount === bookmarks.length ? 'Clear all' : 'Select all'}
 							</Button>
@@ -202,7 +248,7 @@ function BookmarkImporter({
 									<input
 										type="checkbox"
 										checked={bookmark.selected}
-										onChange={() => setBookmarks(items => items.map(item => item.id === bookmark.id ? { ...item, selected: !item.selected } : item))}
+										onChange={() => dispatch({ type: 'selectionToggled', bookmarkId: bookmark.id })}
 									/>
 									<span className="min-w-0">
 										<span className="block truncate font-medium">{bookmark.label}</span>
@@ -213,7 +259,7 @@ function BookmarkImporter({
 						</div>
 						{error && <p className="text-sm text-destructive" role="alert">{error}</p>}
 						<div className="flex justify-end gap-2">
-							<Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={importing}>Cancel</Button>
+							<Button type="button" variant="outline" onClick={() => dispatch({ type: 'dialogChanged', open: false })} disabled={importing}>Cancel</Button>
 							<Button type="button" onClick={importSelected} disabled={importing || selectedCount === 0}>
 								{importing ? 'Importing…' : `Import selected${selectedCount ? ` (${selectedCount})` : ''}`}
 							</Button>
@@ -227,7 +273,7 @@ function BookmarkImporter({
 
 export default function Settings() {
 	const { props } = usePage<PageProps>();
-	const { activeSection: initialSection, applicationName, repositoryCatalog: initialRepositoryCatalog, settings } = props;
+	const { activeSection: initialSection, applicationName, repositoryCatalog: initialRepositoryCatalog, repositoryError: initialRepositoryError, settings } = props;
 	const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 	const [displayName, setDisplayName] = useState(settings.displayName);
 	const [timeZone, setTimeZone] = useState(settings.timeZone);
@@ -241,7 +287,7 @@ export default function Settings() {
 	const [repositorySearch, setRepositorySearch] = useState('');
 	const [repositoryPage, setRepositoryPage] = useState(1);
 	const [loadingRepositories, setLoadingRepositories] = useState(false);
-	const [repositoryError, setRepositoryError] = useState('');
+	const [repositoryError, setRepositoryError] = useState(initialRepositoryError);
 	const [groups, setGroups] = useState(settings.shortcutGroups);
 	const [newShortcutGroupId, setNewShortcutGroupId] = useState(settings.shortcutGroups[0]?.id ?? '');
 	const [newShortcutLabel, setNewShortcutLabel] = useState('');
@@ -252,24 +298,46 @@ export default function Settings() {
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
-	const [message, setMessage] = useState('');
+	const [message, setMessage] = useState(props.feedback?.message ?? '');
 	const shortcutImportRef = useRef<HTMLInputElement>(null);
 
-	const loadGithubRepositories = async (refresh = false) => {
+	const applySettingsPage = (page: { props: unknown }) => {
+		const nextProps = page.props as PageProps;
+		const next = nextProps.settings;
+		setDisplayName(next.displayName);
+		setTimeZone(next.timeZone);
+		setTimeFormat(next.timeFormat);
+		setTheme(next.theme);
+		setShortcutLimit(next.shortcutLimit);
+		setPullRequestWindowDays(next.pullRequestWindowDays);
+		setGroups(next.shortcutGroups);
+		setNewShortcutGroupId(current => next.shortcutGroups.some(group => group.id === current) ? current : next.shortcutGroups[0]?.id ?? '');
+		setRepositoryCatalog(nextProps.repositoryCatalog);
+		setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? next.repositories);
+		setRepositoryError(nextProps.repositoryError);
+		if (nextProps.feedback) setMessage(nextProps.feedback.message);
+		return nextProps;
+	};
+
+	const loadGithubRepositories = (refresh = false) => {
 		setLoadingRepositories(true);
 		setRepositoryError('');
-		try {
-			const response = await fetch(`/settings/github/repositories${refresh ? '?refresh=1' : ''}`, { headers: { 'Accept': 'application/json' } });
-			if (!response.ok) throw new Error(response.status === 401 ? 'Save a GitHub token before loading repositories.' : 'Could not load repositories from GitHub.');
-			const data = await response.json() as GitHubRepositoryCatalog & { selectedScopes: string[] };
-			setRepositoryCatalog(data);
-			setSelectedRepositories(data.selectedScopes);
-			setRepositoryPage(1);
-		} catch (caught) {
-			setRepositoryError(caught instanceof Error ? caught.message : 'Could not load repositories.');
-		} finally {
-			setLoadingRepositories(false);
-		}
+		router.get('/settings', { section: 'github', ...(refresh ? { refresh: '1' } : {}) }, {
+			only: ['repositoryCatalog', 'repositoryError'],
+			preserveState: true,
+			preserveScroll: true,
+			replace: true,
+			onSuccess: page => {
+				const nextProps = page.props as unknown as PageProps;
+				setRepositoryCatalog(nextProps.repositoryCatalog);
+				setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? settings.repositories);
+				setRepositoryError(nextProps.repositoryError);
+				setRepositoryPage(1);
+				window.history.replaceState(window.history.state, '', '/settings?section=github');
+			},
+			onError: () => setRepositoryError('Could not load repositories from GitHub.'),
+			onFinish: () => setLoadingRepositories(false),
+		});
 	};
 
 	useEffect(() => {
@@ -291,52 +359,34 @@ export default function Settings() {
 		window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
 	};
 
-	const saveGeneral = async () => {
+	const saveGeneral = () => {
 		setSaving(true);
 		setMessage('');
-		try {
-			const response = await fetch('/settings', {
-				method: 'PATCH',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ displayName, timeZone, timeFormat, theme }),
-			});
-			if (!response.ok) throw new Error('Could not save general settings.');
-			setMessage('General settings saved.');
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not save settings.');
-		} finally {
-			setSaving(false);
-		}
+		router.patch('/settings?section=general', { displayName, timeZone, timeFormat, theme }, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => setMessage('Could not save general settings.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
-	const saveGithub = async () => {
+	const saveGithub = () => {
 		setSaving(true);
 		setMessage('');
-		try {
-			const replacingToken = token.trim().length > 0;
-			const settingsResponse = await fetch('/settings', {
-				method: 'PATCH',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ githubToken: token || undefined, pullRequestWindowDays }),
-			});
-			if (!settingsResponse.ok) throw new Error('Could not save the GitHub token.');
-
-			if (repositoryCatalog && !replacingToken) {
-				const repositoriesResponse = await fetch('/settings/github/repositories', {
-					method: 'PUT',
-					headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-					body: JSON.stringify({ repositories: selectedRepositories }),
-				});
-				if (!repositoriesResponse.ok) throw new Error('Could not save repository selection.');
-			}
-			setToken('');
-			setMessage('GitHub settings saved.');
-			if (!repositoryCatalog || replacingToken) await loadGithubRepositories();
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not save GitHub settings.');
-		} finally {
-			setSaving(false);
-		}
+		const replacingToken = token.trim().length > 0;
+		router.patch('/settings?section=github', {
+			githubToken: token || undefined,
+			pullRequestWindowDays,
+			...(repositoryCatalog && !replacingToken ? { repositories: selectedRepositories } : {}),
+		}, {
+			preserveScroll: true,
+			onSuccess: page => {
+				applySettingsPage(page);
+				setToken('');
+			},
+			onError: () => setMessage('Could not save GitHub settings.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
 	const toggleRepositoryScope = (scope: string, owner?: string) => {
@@ -349,27 +399,25 @@ export default function Settings() {
 		});
 	};
 
-	const addShortcut = async (event: FormEvent) => {
+	const addShortcut = (event: FormEvent) => {
 		event.preventDefault();
 		setSaving(true);
 		setMessage('');
-		try {
-			const response = await fetch('/settings/shortcuts', {
-				method: 'POST',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ groupId: newShortcutGroupId, label: newShortcutLabel, url: newShortcutUrl, icon: 'link' }),
-			});
-			if (!response.ok) throw new Error('Could not add shortcut.');
-			const data = await response.json();
-			setGroups(current => current.map(group => group.id === newShortcutGroupId ? { ...group, shortcuts: [...group.shortcuts, data.shortcut] } : group));
-			setNewShortcutLabel('');
-			setNewShortcutUrl('');
-			setMessage('Shortcut added.');
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not add shortcut.');
-		} finally {
-			setSaving(false);
-		}
+		router.post('/settings/shortcuts', {
+			groupId: newShortcutGroupId,
+			label: newShortcutLabel,
+			url: newShortcutUrl,
+			icon: 'link',
+		}, {
+			preserveScroll: true,
+			onSuccess: page => {
+				applySettingsPage(page);
+				setNewShortcutLabel('');
+				setNewShortcutUrl('');
+			},
+			onError: () => setMessage('Could not add shortcut.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
 	const startEditingShortcut = (shortcut: ShortcutItem) => {
@@ -379,79 +427,62 @@ export default function Settings() {
 		setConfirmDeleteId(null);
 	};
 
-	const saveShortcut = async (shortcutId: string) => {
+	const saveShortcut = (shortcutId: string) => {
 		setSaving(true);
 		setMessage('');
-		try {
-			const response = await fetch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
-				method: 'PATCH',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ label: editingShortcutLabel, url: editingShortcutUrl }),
-			});
-			if (!response.ok) throw new Error('Could not update shortcut.');
-			const data = await response.json();
-			setGroups(current => current.map(group => ({
-				...group,
-				shortcuts: group.shortcuts.map(shortcut => shortcut.id === shortcutId ? data.shortcut : shortcut),
-			})));
-			setEditingShortcutId(null);
-			setMessage('Shortcut updated.');
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not update shortcut.');
-		} finally {
-			setSaving(false);
-		}
+		router.patch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
+			label: editingShortcutLabel,
+			url: editingShortcutUrl,
+		}, {
+			preserveScroll: true,
+			onSuccess: page => {
+				applySettingsPage(page);
+				setEditingShortcutId(null);
+			},
+			onError: () => setMessage('Could not update shortcut.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
-	const deleteShortcut = async (shortcutId: string) => {
+	const deleteShortcut = (shortcutId: string) => {
 		setSaving(true);
 		setMessage('');
-		try {
-			const response = await fetch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, { method: 'DELETE', headers: { 'Accept': 'application/json' } });
-			if (!response.ok) throw new Error('Could not remove shortcut.');
-			setGroups(current => current.map(group => ({ ...group, shortcuts: group.shortcuts.filter(shortcut => shortcut.id !== shortcutId) })));
-			setConfirmDeleteId(null);
-			setMessage('Shortcut removed.');
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not remove shortcut.');
-		} finally {
-			setSaving(false);
-		}
+		router.delete(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
+			preserveScroll: true,
+			onSuccess: page => {
+				applySettingsPage(page);
+				setConfirmDeleteId(null);
+			},
+			onError: () => setMessage('Could not remove shortcut.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
-	const saveShortcutLimit = async () => {
+	const saveShortcutLimit = () => {
 		setSaving(true);
 		setMessage('');
-		try {
-			const response = await fetch('/settings', {
-				method: 'PATCH',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ shortcutLimit }),
-			});
-			if (!response.ok) throw new Error('Could not save shortcut display limit.');
-			setMessage('Shortcut display limit saved.');
-		} catch (caught) {
-			setMessage(caught instanceof Error ? caught.message : 'Could not save shortcut display limit.');
-		} finally {
-			setSaving(false);
-		}
+		router.patch('/settings?section=shortcuts', { shortcutLimit }, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => setMessage('Could not save shortcut display limit.'),
+			onFinish: () => setSaving(false),
+		});
 	};
 
 	const persistOrder = async (groupId: string, nextShortcuts: ShortcutGroupConfig['shortcuts'], previousShortcuts: ShortcutGroupConfig['shortcuts']) => {
 		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: nextShortcuts } : group));
 		setMessage('Saving shortcut order…');
-		try {
-			const response = await fetch('/settings/shortcuts/reorder', {
-				method: 'PUT',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ groupId, shortcutIds: nextShortcuts.map(shortcut => shortcut.id) }),
-			});
-			if (!response.ok) throw new Error('Could not save shortcut order.');
-			setMessage('Shortcut order saved.');
-		} catch (caught) {
-			setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: previousShortcuts } : group));
-			setMessage(caught instanceof Error ? caught.message : 'Could not save shortcut order.');
-		}
+		router.put('/settings/shortcuts/reorder', {
+			groupId,
+			shortcutIds: nextShortcuts.map(shortcut => shortcut.id),
+		}, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => {
+				setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: previousShortcuts } : group));
+				setMessage('Could not save shortcut order.');
+			},
+		});
 	};
 
 	const reorder = (groupId: string, shortcutId: string, targetId?: string) => {
@@ -486,9 +517,9 @@ export default function Settings() {
 		void persistOrder(groupId, next, previous);
 	};
 
-	const handleImported = (groupId: string, imported: ShortcutItem[]) => {
-		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: [...group.shortcuts, ...imported] } : group));
-		setMessage(`${imported.length} bookmark${imported.length === 1 ? '' : 's'} imported.`);
+	const handleImported = (nextGroups: ShortcutGroupConfig[], feedbackMessage: string) => {
+		setGroups(nextGroups);
+		setMessage(feedbackMessage);
 	};
 
 	const importShortcutSettings = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -499,29 +530,24 @@ export default function Settings() {
 		setMessage('');
 		try {
 			const imported = JSON.parse(await file.text());
-			const response = await fetch('/settings/shortcuts/import', {
-				method: 'POST',
-				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify(imported),
+			router.post('/settings/shortcuts/import', imported, {
+				preserveScroll: true,
+				onSuccess: page => {
+					applySettingsPage(page);
+					setEditingShortcutId(null);
+					setConfirmDeleteId(null);
+				},
+				onError: () => setMessage('Could not import shortcuts.'),
+				onFinish: () => setSaving(false),
 			});
-			const data = await response.json() as { shortcutGroups?: ShortcutGroupConfig[]; error?: string };
-			if (!response.ok || !data.shortcutGroups) {
-				throw new Error(data.error ?? 'Could not import shortcuts.');
-			}
-
-			setGroups(data.shortcutGroups);
-			setNewShortcutGroupId(data.shortcutGroups[0]?.id ?? '');
-			setEditingShortcutId(null);
-			setConfirmDeleteId(null);
-			setMessage('Shortcuts imported. Existing shortcuts were replaced.');
 		} catch (caught) {
 			setMessage(caught instanceof SyntaxError
 				? 'That file is not valid JSON.'
 				: caught instanceof Error ? caught.message : 'Could not import shortcuts.');
-		} finally {
 			event.target.value = '';
 			setSaving(false);
 		}
+		event.target.value = '';
 	};
 
 	const filteredRepositories = (repositoryCatalog?.repositories ?? []).filter(repository => {

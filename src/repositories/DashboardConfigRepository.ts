@@ -212,6 +212,43 @@ export class DashboardConfigRepository {
 		return { id, label: validated.label, url: validated.url, icon: validated.icon as ShortcutIcon };
 	}
 
+	async addShortcuts(inputs: AddShortcutInput[]): Promise<number> {
+		const validated = inputs.map(validateShortcutInput);
+		return this.db.transactional(async db => {
+			const existing = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
+			const knownUrls = new Set(existing.map(shortcut => shortcut.url));
+			const groupLabels = new Map(existing.map(shortcut => [shortcut.groupId, shortcut.groupLabel]));
+			const nextPositions = new Map<string, number>();
+			for (const shortcut of existing) {
+				nextPositions.set(shortcut.groupId, Math.max(nextPositions.get(shortcut.groupId) ?? 0, shortcut.position + 1));
+			}
+			const now = new Date();
+			const additions: DashboardShortcut[] = [];
+			for (const shortcut of validated) {
+				if (knownUrls.has(shortcut.url)) continue;
+				knownUrls.add(shortcut.url);
+				const position = nextPositions.get(shortcut.groupId) ?? 0;
+				nextPositions.set(shortcut.groupId, position + 1);
+				additions.push(db.create(DashboardShortcut, {
+					id: `${slugId(shortcut.label)}-${randomUUID().slice(0, 6)}`,
+					groupId: shortcut.groupId,
+					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Shortcuts',
+					label: shortcut.label,
+					url: shortcut.url,
+					icon: shortcut.icon,
+					position,
+					createdAt: now,
+					updatedAt: now,
+				}));
+			}
+			if (additions.length > 0) {
+				db.persist(additions);
+				await db.flush();
+			}
+			return additions.length;
+		});
+	}
+
 	async reorderShortcuts(groupId: string, shortcutIds: string[]): Promise<ShortcutConfig[]> {
 		const shortcuts = await this.db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
 		const currentIds = new Set(shortcuts.map(shortcut => shortcut.id));
