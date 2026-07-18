@@ -118,22 +118,6 @@ GitHub credentials are stored in SQLite and are not included in shortcut exports
 | `npm run test:e2e` | Runs Playwright tests. |
 | `npm run test:all` | Runs type checks, Vitest, and Playwright. |
 
-## HTTP surface
-
-| Route | Purpose |
-| --- | --- |
-| `GET /` | Dashboard page. |
-| `GET /settings` | Settings page. |
-| `PATCH /settings` | Update display, theme, time, token, and dashboard settings. |
-| `GET /settings/shortcuts/export` | Download shortcut settings as JSON. |
-| `POST /settings/shortcuts/import` | Replace shortcuts from an exported JSON payload. |
-| `GET /settings/github/repositories` | Discover repositories available to the configured token. |
-| `PUT /settings/github/repositories` | Replace selected GitHub repositories. |
-| `POST /settings/shortcuts` | Create a shortcut. |
-| `PATCH /settings/shortcuts/:id` | Update a shortcut. |
-| `DELETE /settings/shortcuts/:id` | Delete a shortcut. |
-| `PUT /settings/shortcuts/reorder` | Reorder shortcuts inside a group. |
-
 ## Docker deployment
 
 Copy and edit the environment file:
