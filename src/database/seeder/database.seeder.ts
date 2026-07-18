@@ -7,8 +7,8 @@ const ADMIN_EMAIL = "admin@example.com";
 const ADMIN_PASSWORD = "admin-password";
 
 export class DatabaseSeeder extends Seeder {
-	async run(em: EntityManager): Promise<void> {
-		const existingAdmin = await em.findOne(User, { email: ADMIN_EMAIL });
+	async run(db: EntityManager): Promise<void> {
+		const existingAdmin = await db.findOne(User, { email: ADMIN_EMAIL });
 
 		if (existingAdmin) {
 			return;
@@ -22,6 +22,6 @@ export class DatabaseSeeder extends Seeder {
 		);
 		admin.emailVerifiedAt = new Date();
 
-		await em.persistAndFlush(admin);
+		await db.persist(admin).flush();
 	}
 }

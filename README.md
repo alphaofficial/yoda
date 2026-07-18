@@ -10,7 +10,6 @@ A self-hosted new-tab dashboard that aggregates GitHub pull requests, Google Cal
 - Grouped shortcuts with an add dialog; shortcuts persist to `config/dashboard.json`
 - Stale-while-revalidate caching with server-side refresh deduplication
 - Partial failure handling: healthy integrations render while failed ones retain cached data
-- Chromium new-tab redirect to the dashboard
 
 ## Prerequisites
 
@@ -157,7 +156,7 @@ docker compose logs -f
 curl http://127.0.0.1/healthz
 ```
 
-The dashboard is available at `http://dashboard.localhost`.
+The dashboard is available at the `APP_URL` configured in `.env`.
 
 ### Configuration backup
 
@@ -165,8 +164,7 @@ Back up `config/dashboard.json` and `.env` separately. The container reads these
 
 ### Security boundaries
 
-- Caddy binds exclusively to `127.0.0.1:80`. No public ingress.
-- The application container has no host port bindings; traffic flows through Caddy over the `dashboard` bridge network.
+- The application binds its configured `PORT` exclusively to `127.0.0.1`. No public ingress and no port 80 binding.
 - Credentials are read from `.env` at runtime and never baked into the image.
 - `config/dashboard.json` is mounted from the host and owned by the user; it is not part of the image.
 
@@ -190,12 +188,6 @@ If the access token expires, the client discards it, renews from the refresh tok
 
 The cache TTL is controlled by `DASHBOARD_CACHE_TTL_SECONDS`. A stale response triggers a background refresh on the next request. Check `docker compose logs app` for refresh activity.
 
-### New tab does not redirect
-
-- Confirm Docker Desktop is running and `docker compose up -d` succeeded.
-- Verify the Chromium extension is loaded unpacked (see below).
-- The new-tab redirect is active only while the service is running.
-
 ## macOS Chromium Setup
 
 ### Start the service
@@ -203,20 +195,6 @@ The cache TTL is controlled by `DASHBOARD_CACHE_TTL_SECONDS`. A stale response t
 ```bash
 docker compose up -d
 ```
-
-### Load the extension
-
-1. Open `chrome://extensions`.
-2. Enable **Developer mode** (toggle in the top right).
-3. Click **Load unpacked**.
-4. Select the `src/views/browser-extension` directory in this repository.
-
-### Set as new tab
-
-1. In `chrome://extensions`, find **Personal Dashboard New Tab**.
-2. Click **Details**.
-3. Under **Chrome URL overrides**, click **Shortcuts**.
-4. Set the shortcut for **New tab** to `http://dashboard.localhost/`.
 
 ### Optional: set as home page
 

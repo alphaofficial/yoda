@@ -28,7 +28,6 @@ const sampleDashboard: DashboardResponse = {
 			},
 		],
 	},
-	calendar: { today: [], upcoming: [] },
 	shortcutGroups: [
 		{
 			id: 'shortcuts',
@@ -45,11 +44,6 @@ const sampleDashboard: DashboardResponse = {
 	],
 	integrations: {
 		github: { state: 'ok', lastSuccessAt: '2024-06-15T12:00:00.000Z', message: null },
-		calendar: {
-			state: 'unconfigured',
-			lastSuccessAt: null,
-			message: 'Add calendar configuration to enable this integration.',
-		},
 	},
 };
 
@@ -74,7 +68,6 @@ test.describe('Dashboard Shell', () => {
 
 	test('renders integration status badges', async ({ page }) => {
 		await expect(page.locator('text=GitHub OK')).toBeVisible();
-		await expect(page.locator('text=Calendar Unconfigured')).toBeVisible();
 	});
 
 	test('renders last refresh time', async ({ page }) => {
@@ -163,7 +156,6 @@ test.describe('Icon Import Verification', () => {
 		const componentFiles = [
 			'src/views/components/dashboard/GreetingHeader.tsx',
 			'src/views/components/dashboard/PullRequestPanel.tsx',
-			'src/views/components/dashboard/CalendarPanel.tsx',
 			'src/views/components/dashboard/ShortcutPanel.tsx',
 			'src/views/components/dashboard/IntegrationState.tsx',
 		];

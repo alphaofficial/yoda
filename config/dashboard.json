@@ -1,12 +1,10 @@
 {
 	"displayName": "Albert",
 	"timeZone": "Europe/London",
+	"shortcutLimit": 8,
 	"github": {
+		"windowDays": 7,
 		"repositories": []
-	},
-	"calendar": {
-		"calendarIds": ["primary"],
-		"lookaheadDays": 7
 	},
 	"shortcutGroups": [
 		{

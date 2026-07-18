@@ -20,7 +20,12 @@ export default defineConfig(({ mode }) => {
         output: {
           entryFileNames: 'app.js',
           chunkFileNames: '[name].js',
-          assetFileNames: '[name].[ext]',
+          assetFileNames: assetInfo => {
+            const sourceName = assetInfo.names?.[0] ?? ''
+            return /\.(woff2?|ttf|otf|eot)$/i.test(sourceName)
+              ? 'fonts/[name].[ext]'
+              : '[name].[ext]'
+          },
           dir: 'public',
           manualChunks: {
             react: ['react', 'react-dom', '@inertiajs/react'],

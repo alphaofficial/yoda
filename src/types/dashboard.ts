@@ -7,16 +7,16 @@ export interface DashboardResponse {
 	stale: boolean;
 	timeZone: string;
 	displayName: string;
+	shortcutLimit?: number;
+	githubTokenConfigured?: boolean;
 	pullRequests: {
-		windowDays: 7;
+		windowDays: number;
 		counts: { open: number; draft: number; merged: number; closed: number };
 		items: PullRequestItem[];
 	};
-	calendar: { today: CalendarEventItem[]; upcoming: CalendarEventItem[] };
 	shortcutGroups: ShortcutGroup[];
 	integrations: {
 		github: IntegrationHealth;
-		calendar: IntegrationHealth;
 	};
 }
 
@@ -40,15 +40,20 @@ export interface PullRequestItem {
 	labels: string[];
 }
 
-export interface CalendarEventItem {
-	id: string;
-	calendarId: string;
-	calendarName: string;
-	title: string;
-	start: string;
-	end: string;
-	allDay: boolean;
-	url: string | null;
+export interface GitHubRepository {
+	id: number;
+	name: string;
+	fullName: string;
+	owner: string;
+	ownerType: 'User' | 'Organization';
+	private: boolean;
+	archived: boolean;
+}
+
+export interface GitHubRepositoryCatalog {
+	viewerLogin: string;
+	repositories: GitHubRepository[];
+	defaultScopes: string[];
 }
 
 export interface ShortcutGroup {
@@ -82,12 +87,11 @@ export interface ShortcutConfig {
 export interface DashboardConfig {
 	displayName: string;
 	timeZone: string;
+	shortcutLimit?: number;
+	githubToken?: string | null;
 	github: {
 		repositories: string[];
-	};
-	calendar: {
-		calendarIds: string[];
-		lookaheadDays: number;
+		windowDays: number;
 	};
 	shortcutGroups: ShortcutGroupConfig[];
 }

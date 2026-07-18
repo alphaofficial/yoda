@@ -1,9 +1,24 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { requestJson, IntegrationRequestError } from '@/integrations/http';
+import { createHttpClient, IntegrationRequestError } from '@/integrations/http';
 
-describe('requestJson', () => {
+describe('HttpClient', () => {
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let createMockFetch: any;
+
+	function send<T>(options: {
+		url: string;
+		method?: 'GET' | 'POST';
+		headers?: Record<string, string>;
+		body?: string;
+		provider: string;
+		sleeper?: (milliseconds: number) => Promise<void>;
+	}): Promise<T> {
+		const { url, method = 'GET', sleeper, ...requestOptions } = options;
+		const client = createHttpClient({ transport: createMockFetch, sleep: sleeper });
+		return method === 'POST'
+			? client.post<T>(url, requestOptions)
+			: client.get<T>(url, requestOptions);
+	}
 
 	beforeEach(() => {
 		createMockFetch = vi.fn();
@@ -40,10 +55,9 @@ describe('requestJson', () => {
 				})
 			);
 
-			const result = await requestJson({
+			const result = await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 			});
 
 			expect(result).toEqual(mockData);
@@ -57,10 +71,9 @@ describe('requestJson', () => {
 				})
 			);
 
-			const result = await requestJson({
+			const result = await send({
 				url: 'https://api.example.com/empty',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 			});
 
 			expect(result).toBeUndefined();
@@ -74,10 +87,9 @@ describe('requestJson', () => {
 			createMockFetch.mockRejectedValueOnce(timeoutError);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/slow',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper: async () => {},
 				})
 			).rejects.toMatchObject({
@@ -96,13 +108,12 @@ describe('requestJson', () => {
 				})
 			);
 
-			await requestJson({
+			await send({
 				url: 'https://api.example.com/data',
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json', Authorization: 'Bearer token' },
 				body: '{"test": true}',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 			});
 
 			expect(createMockFetch).toHaveBeenCalledWith(
@@ -131,10 +142,9 @@ describe('requestJson', () => {
 
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
-			const result = await requestJson({
+			const result = await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 				sleeper,
 			});
 
@@ -164,10 +174,9 @@ describe('requestJson', () => {
 
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
-			const result = await requestJson({
+			const result = await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 				sleeper,
 			});
 
@@ -194,10 +203,9 @@ describe('requestJson', () => {
 
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
-			await requestJson({
+			await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 				sleeper,
 			});
 
@@ -229,10 +237,9 @@ describe('requestJson', () => {
 
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
-			const result = await requestJson({
+			const result = await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 				sleeper,
 			});
 
@@ -254,10 +261,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toThrow(IntegrationRequestError);
@@ -280,10 +286,9 @@ describe('requestJson', () => {
 
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
-			await requestJson({
+			await send({
 				url: 'https://api.example.com/data',
 				provider: 'test',
-				fetchImpl: createMockFetch,
 				sleeper,
 			});
 
@@ -305,10 +310,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -332,10 +336,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -359,10 +362,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -386,10 +388,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -413,10 +414,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -442,10 +442,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -469,10 +468,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -494,11 +492,10 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					headers: { Authorization: 'Bearer secret-value' },
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -519,12 +516,11 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					method: 'POST',
 					body: JSON.stringify({ secret: 'sensitive-data' }),
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -560,10 +556,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'github',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -596,10 +591,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({
@@ -617,10 +611,9 @@ describe('requestJson', () => {
 			const sleeper = vi.fn().mockResolvedValue(undefined);
 
 			await expect(
-				requestJson({
+				send({
 					url: 'https://api.example.com/data',
 					provider: 'test',
-					fetchImpl: createMockFetch,
 					sleeper,
 				})
 			).rejects.toMatchObject({

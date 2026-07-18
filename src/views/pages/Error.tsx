@@ -1,4 +1,5 @@
 import { Head, Link } from '@inertiajs/react';
+import { Button } from '@/views/components/ui/button';
 
 interface Props {
 	status?: number;
@@ -17,43 +18,40 @@ export default function ErrorPage({ status = 500, message, stack }: Props) {
 	return (
 		<>
 			<Head title={`${status} — ${title}`} />
-			<div className="min-h-screen bg-white flex items-center justify-center px-6 py-12">
+			<div className="flex min-h-screen items-center justify-center bg-background px-6 py-12 text-foreground">
 				<div className={isDev ? 'w-full max-w-3xl' : 'text-center max-w-md'}>
-					<p className="text-sm font-semibold text-gray-500">{status}</p>
-					<h1 className="mt-2 text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
+					<p className="font-medium text-muted-foreground">{status}</p>
+					<h1 className="display-heading mt-2 text-foreground">
 						{title}
 					</h1>
 					{isDev ? (
-						<div className="mt-6 overflow-hidden rounded-lg border border-gray-800 bg-[#1e1e1e] text-left shadow-xl">
-							<div className="flex items-center gap-1.5 border-b border-gray-800 bg-[#2d2d2d] px-4 py-2.5">
-								<span className="h-3 w-3 rounded-full bg-[#ff5f56]" />
-								<span className="h-3 w-3 rounded-full bg-[#ffbd2e]" />
-								<span className="h-3 w-3 rounded-full bg-[#27c93f]" />
-								<span className="ml-3 text-xs text-gray-400 font-mono">error</span>
+						<div className="mt-6 overflow-hidden border bg-card text-left shadow-sm">
+							<div className="flex items-center gap-1.5 border-b bg-muted px-4 py-2.5">
+								<span className="h-3 w-3 bg-destructive" />
+								<span className="h-3 w-3 bg-muted-foreground" />
+								<span className="h-3 w-3 bg-primary" />
+								<span className="ml-3 font-mono text-muted-foreground">error</span>
 							</div>
-							<pre className="whitespace-pre-wrap break-words p-4 text-sm leading-relaxed font-mono text-gray-100">
+							<pre className="whitespace-pre-wrap break-words p-4 font-mono leading-relaxed text-foreground">
 								<code>
 									{message ? (
 										<>
-											<span className="text-red-400">$ </span>
-											<span className="text-red-300">{message}</span>
+											<span className="text-destructive">$ </span>
+											<span className="text-destructive">{message}</span>
 											{'\n\n'}
 										</>
 									) : null}
-									{stack ? <span className="text-gray-400">{stack}</span> : null}
+									{stack ? <span className="text-muted-foreground">{stack}</span> : null}
 								</code>
 							</pre>
 						</div>
 					) : (
-						message && <p className="mt-4 text-base text-gray-600">{message}</p>
+						message && <p className="mt-4 text-muted-foreground">{message}</p>
 					)}
 					<div className={`mt-8 ${isDev ? '' : 'text-center'}`}>
-						<Link
-							href="/"
-							className="rounded-md bg-black px-3.5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-gray-800"
-						>
+						<Button render={<Link href="/" />}>
 							Go home
-						</Link>
+						</Button>
 					</div>
 				</div>
 			</div>

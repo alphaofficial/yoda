@@ -1,17 +1,27 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import session from 'express-session';
 import { dashboardIndex, createShortcut } from '@/controllers/dashboard';
 import { ShortcutValidationError } from '@/types/dashboard';
 import type { DashboardResponse } from '@/types/dashboard';
 
-vi.mock('@/core/dashboard', () => ({
-	getDashboardService: vi.fn(),
+const routeMocks = vi.hoisted(() => ({
+	createDashboardService: vi.fn(),
+	addShortcut: vi.fn(),
+	getConfig: vi.fn(),
+	invalidateDashboardSnapshot: vi.fn(),
 }));
 
-vi.mock('@/config/dashboard', () => ({
-	addShortcut: vi.fn(),
+vi.mock('@/core/dashboard', () => ({
+	createDashboardService: routeMocks.createDashboardService,
+	invalidateDashboardSnapshot: routeMocks.invalidateDashboardSnapshot,
+}));
+
+vi.mock('@/repositories/DashboardConfigRepository', () => ({
+	DashboardConfigRepository: class {
+		addShortcut = routeMocks.addShortcut;
+		getConfig = routeMocks.getConfig;
+	},
 }));
 
 vi.mock('@/config/variables', () => ({
@@ -20,30 +30,18 @@ vi.mock('@/config/variables', () => ({
 		DASHBOARD_CACHE_TTL_SECONDS: 60,
 		DASHBOARD_REQUEST_TIMEOUT_MS: 5000,
 		DASHBOARD_RETRY_COUNT: 2,
-		GITHUB_TOKEN: 'test-token',
-		GOOGLE_CLIENT_ID: 'test-client-id',
-		GOOGLE_CLIENT_SECRET: 'test-client-secret',
-		GOOGLE_REFRESH_TOKEN: 'test-refresh-token',
 		APP_NAME: 'Test Dashboard',
 		NODE_ENV: 'test',
-		SESSION_SECRET: 'test-secret',
 	},
 }));
-
-import { getDashboardService } from '@/core/dashboard';
-import { addShortcut } from '@/config/dashboard';
 
 function createTestApp() {
 	const app = express();
 	app.use(express.json());
-	app.use(
-		session({
-			secret: 'test-secret',
-			resave: false,
-			saveUninitialized: false,
-		})
-	);
-
+	app.use((req, _res, next) => {
+		(req as any).ctx = { db: { fork: vi.fn(() => ({})) } };
+		next();
+	});
 	app.use((req: express.Request, _res: express.Response, next: express.NextFunction) => {
 		(req as express.Request & { inertia: { share: ReturnType<typeof vi.fn>; render: ReturnType<typeof vi.fn>; [key: string]: unknown } }).inertia = {
 			share: vi.fn(),
@@ -72,7 +70,6 @@ describe('Dashboard Routes', () => {
 	const mockDashboardService = {
 		getSnapshot: vi.fn(),
 	};
-	const mockAddShortcut = addShortcut as ReturnType<typeof vi.fn>;
 
 	const sampleDashboard: DashboardResponse = {
 		generatedAt: '2024-06-15T12:00:00Z',
@@ -99,7 +96,6 @@ describe('Dashboard Routes', () => {
 				},
 			],
 		},
-		calendar: { today: [], upcoming: [] },
 		shortcutGroups: [
 			{
 				id: 'shortcuts',
@@ -116,7 +112,6 @@ describe('Dashboard Routes', () => {
 		],
 		integrations: {
 			github: { state: 'ok', lastSuccessAt: '2024-06-15T12:00:00Z', message: null },
-			calendar: { state: 'unconfigured', lastSuccessAt: null, message: 'Add calendar configuration to enable this integration.' },
 		},
 	};
 
@@ -124,12 +119,20 @@ describe('Dashboard Routes', () => {
 		app = createTestApp();
 		vi.clearAllMocks();
 		(mockDashboardService.getSnapshot as ReturnType<typeof vi.fn>).mockResolvedValue(sampleDashboard);
-		(getDashboardService as ReturnType<typeof vi.fn>).mockReturnValue(mockDashboardService);
-		mockAddShortcut.mockResolvedValue({
+		routeMocks.createDashboardService.mockReturnValue(mockDashboardService);
+		routeMocks.addShortcut.mockResolvedValue({
 			id: 'new-shortcut',
 			label: 'New Shortcut',
 			url: 'https://example.com',
 			icon: 'link',
+		});
+		routeMocks.getConfig.mockResolvedValue({
+			displayName: 'Test User',
+			timeZone: 'Europe/London',
+			shortcutLimit: 8,
+			githubToken: 'test-token',
+			github: { repositories: ['owner/repo'], windowDays: 7 },
+			shortcutGroups: sampleDashboard.shortcutGroups,
 		});
 	});
 
@@ -193,11 +196,11 @@ describe('Dashboard Routes', () => {
 					icon: 'link',
 				},
 			});
-			expect(mockAddShortcut).toHaveBeenCalledWith(input, 'config/dashboard.json');
+			expect(routeMocks.addShortcut).toHaveBeenCalledWith(input);
 		});
 
 		it('returns 422 with field errors on validation failure', async () => {
-			mockAddShortcut.mockImplementation(() => {
+			routeMocks.addShortcut.mockImplementation(() => {
 				throw new ShortcutValidationError('Invalid shortcut', { url: 'URL is invalid' });
 			});
 
@@ -225,7 +228,7 @@ describe('Dashboard Routes', () => {
 		});
 
 		it('does not expose credentials in response', async () => {
-			mockAddShortcut.mockResolvedValue({
+			routeMocks.addShortcut.mockResolvedValue({
 				id: 'test',
 				label: 'Test',
 				url: 'https://example.com',

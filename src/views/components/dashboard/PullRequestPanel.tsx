@@ -1,6 +1,10 @@
-import { ExternalLink, GitPullRequest } from 'lucide-react';
-import { Badge } from '@/views/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/views/components/ui/card';
+import { useState } from 'react';
+import { GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon } from '@primer/octicons-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ExternalLink, Search } from 'lucide-react';
+import { Button } from '@/views/components/ui/button';
+import { Card, CardContent } from '@/views/components/ui/card';
+import { Input } from '@/views/components/ui/input';
+import { Select } from '@/views/components/ui/select';
 import type { DashboardResponse, PullRequestItem } from '@/types/dashboard';
 
 interface PullRequestPanelProps {
@@ -21,44 +25,6 @@ function formatRelativeAge(isoString: string): string {
 	return `${weeks} weeks ago`;
 }
 
-function getReviewBadgeVariant(
-	reviewState: PullRequestItem['reviewState']
-): 'secondary' | 'default' | 'destructive' {
-	switch (reviewState) {
-		case 'approved':
-			return 'default';
-		case 'changes_requested':
-			return 'destructive';
-		case 'review_required':
-		case 'draft':
-			return 'secondary';
-	}
-}
-
-function getReviewBadgeLabel(reviewState: PullRequestItem['reviewState']): string {
-	switch (reviewState) {
-		case 'approved':
-			return 'Approved';
-		case 'changes_requested':
-			return 'Changes requested';
-		case 'review_required':
-			return 'Review required';
-		case 'draft':
-			return 'Draft';
-	}
-}
-
-function getStateBadgeVariant(state: PullRequestItem['state']): 'secondary' | 'default' {
-	switch (state) {
-		case 'open':
-			return 'default';
-		case 'draft':
-		case 'merged':
-		case 'closed':
-			return 'secondary';
-	}
-}
-
 function getStateLabel(state: PullRequestItem['state']): string {
 	switch (state) {
 		case 'open':
@@ -72,111 +38,123 @@ function getStateLabel(state: PullRequestItem['state']): string {
 	}
 }
 
-function PullRequestRow({ item }: { item: PullRequestItem }) {
-	const displayLabels = item.labels.slice(0, 3);
-	const extraLabelCount = item.labels.length - 3;
+function PullRequestStateIcon({ state }: { state: PullRequestItem['state'] }) {
+	const commonProps = { size: 20, 'aria-hidden': true } as const;
+	switch (state) {
+		case 'open':
+			return <GitPullRequestIcon {...commonProps} className="text-[var(--github-pr-open)]" />;
+		case 'draft':
+			return <GitPullRequestDraftIcon {...commonProps} className="text-[var(--github-pr-draft)]" />;
+		case 'merged':
+			return <GitMergeIcon {...commonProps} className="text-[var(--github-pr-merged)]" />;
+		case 'closed':
+			return <GitPullRequestClosedIcon {...commonProps} className="text-[var(--github-pr-closed)]" />;
+	}
+}
 
+function PullRequestRow({ item }: { item: PullRequestItem }) {
 	return (
 		<a
 			href={item.url}
 			target="_blank"
 			rel="noreferrer noopener"
-			className="flex items-center gap-3 px-7 py-6 no-underline transition-colors hover:bg-muted/50"
+			className="flex items-start gap-4 px-6 py-4 no-underline"
 		>
-			<GitPullRequest
-				className="size-5 shrink-0 text-primary"
-				aria-hidden="true"
-			/>
-			<div className="flex min-w-0 flex-col gap-1">
-				<span className="truncate text-[18px]/[28px] font-medium text-foreground">
+			<span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
+				<PullRequestStateIcon state={item.state} />
+				<span className="sr-only">{getStateLabel(item.state)} pull request</span>
+			</span>
+			<div className="min-w-0 flex-1">
+				<span className="block truncate text-base font-semibold leading-snug text-foreground">
 					{item.title}
 				</span>
-				<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[15px]/[22px] text-muted-foreground">
+				<div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
 					<span>
 						{item.repository} #{item.number}
 					</span>
 					<span aria-hidden="true">·</span>
-					<span>{item.author}</span>
-					<span aria-hidden="true">·</span>
-					<span>{formatRelativeAge(item.updatedAt)}</span>
+					<span>Updated {formatRelativeAge(item.updatedAt)}</span>
 				</div>
 			</div>
-			<div className="ml-auto flex shrink-0 items-center gap-2">
-				<Badge variant={getReviewBadgeVariant(item.reviewState)} className="text-[12px]/[18px]">
-					{getReviewBadgeLabel(item.reviewState)}
-				</Badge>
-				{displayLabels.map(label => (
-					<Badge key={label} variant="outline" className="text-[12px]/[18px]">
-						{label}
-					</Badge>
-				))}
-				{extraLabelCount > 0 && (
-					<Badge variant="outline" className="text-[12px]/[18px]">
-						+{extraLabelCount}
-					</Badge>
-				)}
-				<ExternalLink
-					className="size-4 text-muted-foreground"
-					aria-hidden="true"
-				/>
-			</div>
+			<ExternalLink className="mt-1 size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />
 		</a>
 	);
 }
 
-function MetricCell({
-	label,
-	value
-}: {
-	label: string;
-	value: number;
-}) {
-	return (
-		<div className="flex flex-col items-center justify-center px-6">
-			<span className="text-[16px]/[24px] font-normal text-muted-foreground">
-				{label}
-			</span>
-			<span className="text-[24px]/[32px] font-bold text-foreground">
-				{value}
-			</span>
-		</div>
-	);
+function fuzzyMatch(value: string, query: string): boolean {
+	const haystack = value.toLowerCase();
+	const needle = query.toLowerCase().trim();
+	if (!needle) return true;
+	let position = 0;
+	for (const character of needle) {
+		position = haystack.indexOf(character, position);
+		if (position < 0) return false;
+		position++;
+	}
+	return true;
 }
 
 export default function PullRequestPanel({ pullRequests }: PullRequestPanelProps) {
-	const { counts, items } = pullRequests;
+	const { items } = pullRequests;
+	const [query, setQuery] = useState('');
+	const [stateFilter, setStateFilter] = useState<PullRequestItem['state'] | 'all'>('open');
+	const [reviewFilter, setReviewFilter] = useState<PullRequestItem['reviewState'] | 'all'>('review_required');
+	const [page, setPage] = useState(1);
+	const pageSize = 10;
+	const filteredItems = items.filter(item => {
+		const matchesState = stateFilter === 'all' || item.state === stateFilter;
+		const matchesReview = reviewFilter === 'all' || item.reviewState === reviewFilter;
+		const matchesQuery = fuzzyMatch(`${item.repository} ${item.title} ${item.author} ${item.labels.join(' ')}`, query);
+		return matchesState && matchesReview && matchesQuery;
+	});
+	const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+	const visibleItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
+
+	const changeStateFilter = (nextState: PullRequestItem['state'] | 'all') => {
+		setStateFilter(nextState);
+		if (nextState !== 'open') setReviewFilter('all');
+		setPage(1);
+	};
 
 	return (
-		<section aria-label="Pull requests">
-			<Card
-				className="rounded-[20px] border shadow-[0_1px_2px_rgb(0_0_0_/_0.035)]"
-				style={{ '--card-spacing': '0' } as React.CSSProperties}
-			>
-				<CardHeader className="px-6 pt-6">
-					<CardTitle className="text-[28px]/[34px] font-bold text-foreground" style={{ letterSpacing: '-0.02em' }}>
-						Pull requests from the last 7 days
-					</CardTitle>
-				</CardHeader>
-				<CardContent className="px-0 pb-0">
-					<div
-						className="grid h-28 grid-cols-4 gap-0 border-b border-border px-6 max-sm:grid-cols-2 max-sm:h-22"
-						style={{ borderTopWidth: '1px', borderBottomWidth: '1px' }}
-					>
-						<MetricCell label="Open PRs" value={counts.open} />
-						<div className="border-l border-border" />
-						<MetricCell label="Drafts" value={counts.draft} />
-						<div className="border-l border-border" />
-						<MetricCell label="Merged" value={counts.merged} />
-						<div className="border-l border-border" />
-						<MetricCell label="Closed" value={counts.closed} />
+		<section aria-label="Pull requests" className="flex flex-col gap-4">
+			<div className="grid gap-3">
+				<h2 className="display-heading text-base leading-snug text-foreground">Pull requests from the last {pullRequests.windowDays} {pullRequests.windowDays === 1 ? 'day' : 'days'}</h2>
+				<div className="flex flex-wrap items-stretch gap-2">
+					<div className="relative min-w-56 flex-1">
+						<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+						<Input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} aria-label="Search pull requests and repositories" placeholder="Search pull requests or repositories" className="h-8 pl-9 text-sm" />
 					</div>
-					{items.length === 0 ? (
-						<div className="flex items-center justify-center py-12 text-[15px]/[22px] text-muted-foreground">
-							No pull requests in the last 7 days
+					<div className="relative w-28 shrink-0">
+						<Select aria-label="Filter pull requests by state" value={stateFilter} onChange={event => changeStateFilter(event.target.value as PullRequestItem['state'] | 'all')} className="h-8 appearance-none py-1 pr-9 text-sm leading-none">
+							<option value="open">Open</option>
+							<option value="draft">Draft</option>
+							<option value="merged">Merged</option>
+							<option value="closed">Closed</option>
+							<option value="all">All states</option>
+						</Select>
+						<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+					</div>
+					<div className="relative w-44 shrink-0">
+						<Select aria-label="Filter pull requests by review state" value={reviewFilter} disabled={stateFilter !== 'open'} onChange={event => { setReviewFilter(event.target.value as PullRequestItem['reviewState'] | 'all'); setPage(1); }} className="h-8 appearance-none py-1 pr-9 text-sm leading-none">
+							<option value="review_required">Review required</option>
+							<option value="all">Any review state</option>
+							<option value="approved">Approved</option>
+							<option value="changes_requested">Changes requested</option>
+						</Select>
+						<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+					</div>
+				</div>
+			</div>
+			<Card className="py-0">
+				<CardContent className="p-0">
+					{filteredItems.length === 0 ? (
+						<div className="flex min-h-28 items-center justify-center text-muted-foreground">
+							No pull requests match these filters
 						</div>
 					) : (
 						<div>
-							{items.map((item, index) => (
+							{visibleItems.map(item => (
 								<div
 									key={item.id}
 									className="border-b border-border last:border-b-0"
@@ -188,6 +166,15 @@ export default function PullRequestPanel({ pullRequests }: PullRequestPanelProps
 					)}
 				</CardContent>
 			</Card>
+			{pageCount > 1 && (
+				<div className="flex items-center justify-between text-sm text-muted-foreground">
+					<span>Page {page} of {pageCount} · {filteredItems.length} pull requests</span>
+					<div className="flex gap-1">
+						<Button type="button" variant="outline" size="icon-sm" aria-label="Previous pull request page" disabled={page === 1} onClick={() => setPage(current => current - 1)}><ChevronLeft /></Button>
+						<Button type="button" variant="outline" size="icon-sm" aria-label="Next pull request page" disabled={page === pageCount} onClick={() => setPage(current => current + 1)}><ChevronRight /></Button>
+					</div>
+				</div>
+			)}
 		</section>
 	);
 }

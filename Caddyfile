@@ -1,8 +1,0 @@
-:80 {
-	log {
-		output: stdout
-		format: json
-	}
-
-	reverse_proxy app:3000
-}

@@ -1,30 +1,74 @@
-import { type Request, type Response, type NextFunction } from 'express';
-import { getDashboardService } from '@/core/dashboard';
-import { addShortcut } from '@/config/dashboard';
+import { type Request, type Response } from 'express';
+import { createDashboardService, invalidateDashboardSnapshot } from '@/core/dashboard';
+import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
 import { ShortcutValidationError } from '@/types/dashboard';
-import variables from '@/config/variables';
 
-export async function dashboardIndex(req: Request, res: Response, next: NextFunction) {
-	try {
-		const dashboardService = getDashboardService();
-		const dashboard = await dashboardService.getSnapshot();
-		return res.render('Home', { dashboard });
-	} catch (err) {
-		next(err);
-	}
+export async function dashboardIndex(req: Request, res: Response) {
+	const dashboardService = createDashboardService({
+		configRepository: new DashboardConfigRepository(req.ctx.db.fork()),
+	});
+	const dashboard = await dashboardService.getSnapshot();
+	return res.render('Home', { dashboard });
 }
 
-export async function createShortcut(req: Request, res: Response, next: NextFunction) {
+export async function createShortcut(req: Request, res: Response) {
 	try {
-		const validated = req.body;
-
-		const shortcut = await addShortcut(validated, variables.DASHBOARD_CONFIG_PATH);
-
+		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
+		const shortcut = await configRepository.addShortcut(req.body);
+		await invalidateDashboardSnapshot(await configRepository.getConfig());
 		res.status(201).json({ shortcut });
 	} catch (err) {
 		if (err instanceof ShortcutValidationError) {
 			return res.status(422).json({ error: 'Invalid shortcut', fields: err.fields });
 		}
-		next(err);
+		throw err;
+	}
+}
+
+export async function updateShortcut(req: Request, res: Response) {
+	try {
+		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
+		const shortcut = await configRepository.updateShortcut(shortcutId, req.body);
+		await invalidateDashboardSnapshot(await configRepository.getConfig());
+		return res.json({ shortcut });
+	} catch (err) {
+		if (err instanceof ShortcutValidationError) {
+			return res.status(422).json({ error: 'Invalid shortcut', fields: err.fields });
+		}
+		throw err;
+	}
+}
+
+export async function deleteShortcut(req: Request, res: Response) {
+	try {
+		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
+		await configRepository.deleteShortcut(shortcutId);
+		await invalidateDashboardSnapshot(await configRepository.getConfig());
+		return res.status(204).send();
+	} catch (err) {
+		if (err instanceof ShortcutValidationError) {
+			return res.status(404).json({ error: 'Shortcut not found', fields: err.fields });
+		}
+		throw err;
+	}
+}
+
+export async function reorderShortcuts(req: Request, res: Response) {
+	try {
+		const groupId = typeof req.body.groupId === 'string' ? req.body.groupId : '';
+		const shortcutIds = Array.isArray(req.body.shortcutIds)
+			? req.body.shortcutIds.filter((id: unknown): id is string => typeof id === 'string')
+			: [];
+		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
+		const shortcuts = await configRepository.reorderShortcuts(groupId, shortcutIds);
+		await invalidateDashboardSnapshot(await configRepository.getConfig());
+		return res.json({ shortcuts });
+	} catch (err) {
+		if (err instanceof ShortcutValidationError) {
+			return res.status(422).json({ error: 'Invalid shortcut order', fields: err.fields });
+		}
+		throw err;
 	}
 }

@@ -1,5 +1,4 @@
 import { promises as fs } from 'fs';
-import path from 'path';
 import type {
 	AddShortcutInput,
 	DashboardConfig,
@@ -142,15 +141,6 @@ function validateDisplayName(displayName: string): void {
 	}
 }
 
-function validateLookaheadDays(days: number): void {
-	if (!Number.isInteger(days) || days < 1 || days > 30) {
-		throw new DashboardConfigError(
-			'lookaheadDays must be an integer from 1 to 30',
-			{ lookaheadDays: String(days) }
-		);
-	}
-}
-
 export function validateDashboardConfig(config: unknown): DashboardConfig {
 	if (!config || typeof config !== 'object') {
 		throw new DashboardConfigError('Configuration must be an object');
@@ -188,26 +178,6 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 		seenRepos.add(repo);
 		validateRepository(repo);
 	}
-
-	const calendar = c.calendar;
-	if (!calendar || typeof calendar !== 'object') {
-		throw new DashboardConfigError('calendar configuration is required');
-	}
-	const cal = calendar as Record<string, unknown>;
-	const calendarIds = cal.calendarIds;
-	if (!Array.isArray(calendarIds)) {
-		throw new DashboardConfigError('calendar.calendarIds must be an array');
-	}
-	for (const id of calendarIds) {
-		if (typeof id !== 'string') {
-			throw new DashboardConfigError('Calendar ID must be a string');
-		}
-	}
-
-	if (typeof cal.lookaheadDays !== 'number') {
-		throw new DashboardConfigError('calendar.lookaheadDays is required');
-	}
-	validateLookaheadDays(cal.lookaheadDays);
 
 	const shortcutGroups = c.shortcutGroups;
 	if (!Array.isArray(shortcutGroups)) {
@@ -276,12 +246,11 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 	return {
 		displayName: c.displayName.trim(),
 		timeZone: c.timeZone,
+		shortcutLimit: typeof c.shortcutLimit === 'number' && Number.isInteger(c.shortcutLimit) && c.shortcutLimit >= 1 && c.shortcutLimit <= 50 ? c.shortcutLimit : 8,
+		githubToken: typeof c.githubToken === 'string' ? c.githubToken : null,
 		github: {
 			repositories: repoList as string[],
-		},
-		calendar: {
-			calendarIds: calendarIds as string[],
-			lookaheadDays: cal.lookaheadDays as number,
+			windowDays: typeof gh.windowDays === 'number' && Number.isInteger(gh.windowDays) && gh.windowDays >= 1 && gh.windowDays <= 30 ? gh.windowDays : 7,
 		},
 		shortcutGroups: shortcutGroups as ShortcutGroupConfig[],
 	};

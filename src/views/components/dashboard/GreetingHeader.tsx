@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Settings } from 'lucide-react';
+import { Button } from '@/views/components/ui/button';
 import type { DashboardResponse } from '@/types/dashboard';
 
 interface GreetingHeaderProps {
@@ -46,32 +47,31 @@ export default function GreetingHeader({ dashboard }: GreetingHeaderProps) {
 	const timeStr = formatTime(time);
 
 	return (
-		<>
-			<div className="flex items-center justify-end mb-20 max-md:mb-12">
-				<div className="flex items-center gap-3">
-					<p className="text-[18px]/[28px] font-normal text-muted-foreground">
-						{timeStr}
-					</p>
-					<button
-						type="button"
-						className="flex size-11 items-center justify-center rounded-md bg-transparent text-muted-foreground transition-colors hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-						aria-label="Settings"
-					>
-						<Settings className="size-5" aria-hidden="true" />
-					</button>
-				</div>
-			</div>
-			<div className="flex flex-col gap-2 mb-16 max-md:mb-10">
-				<p className="text-[18px]/[28px] font-normal text-muted-foreground">
+		<header className="mb-10 max-md:mb-10">
+			<div className="mb-4 flex items-center justify-between">
+				<p className="font-normal text-muted-foreground">
 					{dateStr}
 				</p>
-				<h1
-					className="text-[48px]/[52px] font-bold text-foreground max-sm:text-[36px]/[40px]"
-					style={{ letterSpacing: '-0.035em' }}
-				>
+				<div className="flex items-center gap-3">
+					<p className="font-normal tabular-nums text-muted-foreground">
+						{timeStr}
+					</p>
+					<Button
+						variant="ghost"
+						size="icon"
+						className="shrink-0"
+						aria-label="Settings"
+						render={<a href="/settings" />}
+					>
+						<Settings aria-hidden="true" />
+					</Button>
+				</div>
+			</div>
+			<div>
+				<h1 className="display-heading page-heading text-foreground">
 					{greetingText}
 				</h1>
 			</div>
-		</>
+		</header>
 	);
 }

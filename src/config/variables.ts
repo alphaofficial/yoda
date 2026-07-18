@@ -101,10 +101,6 @@ const variables = {
 		}
 		return value;
 	})(),
-	GITHUB_TOKEN: env('GITHUB_TOKEN'),
-	GOOGLE_CLIENT_ID: env('GOOGLE_CLIENT_ID'),
-	GOOGLE_CLIENT_SECRET: env('GOOGLE_CLIENT_SECRET'),
-	GOOGLE_REFRESH_TOKEN: env('GOOGLE_REFRESH_TOKEN'),
 };
 
 if (!variables.SESSION_SECRET) {

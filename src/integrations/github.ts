@@ -1,21 +1,25 @@
-import { requestJson, IntegrationRequestError } from '@/integrations/http';
-import type { PullRequestItem, ReviewState } from '@/types/dashboard';
+import { httpClient, IntegrationRequestError, type HttpClient } from '@/integrations/http';
+import type { GitHubRepository, GitHubRepositoryCatalog, PullRequestItem, ReviewState } from '@/types/dashboard';
 
-interface GitHubGraphQLResponse {
-	data?: {
-		repository?: {
-			pullRequests: {
-				nodes: RawPullRequest[];
-				pageInfo: PageInfo;
-				rateLimit: RateLimitInfo;
-			};
-		};
-		rateLimit?: RateLimitInfo;
-	};
-	errors?: Array<{ message: string }>;
+interface GitHubClientOptions {
+	token: string;
+	repositories: string[];
+	windowDays?: number;
+	httpClient?: HttpClient;
+	now?: Date;
+}
+
+interface RawRepository {
+	id: number;
+	name: string;
+	full_name: string;
+	private: boolean;
+	archived: boolean;
+	owner: { login: string; type: 'User' | 'Organization' };
 }
 
 interface RawPullRequest {
+	__typename: 'PullRequest';
 	id: string;
 	number: number;
 	title: string;
@@ -27,203 +31,151 @@ interface RawPullRequest {
 	mergedAt: string | null;
 	author: { login: string } | null;
 	reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | 'COMMENTED' | null;
-	labels: {
-		nodes: Array<{ name: string }>;
+	repository: { nameWithOwner: string };
+	labels: { nodes: Array<{ name: string }> };
+}
+
+interface SearchResponse {
+	data?: {
+		search?: {
+			nodes: RawPullRequest[];
+			pageInfo: { endCursor: string | null; hasNextPage: boolean };
+		};
+	};
+	errors?: Array<{ message: string }>;
+}
+
+const GITHUB_HEADERS = {
+	'Accept': 'application/vnd.github+json',
+	'X-GitHub-Api-Version': '2022-11-28',
+};
+
+const INVOLVEMENT_QUALIFIERS = ['author', 'review-requested', 'reviewed-by'] as const;
+
+export async function discoverGitHubRepositories(token: string, client: HttpClient = httpClient): Promise<GitHubRepositoryCatalog> {
+	const headers = { ...GITHUB_HEADERS, Authorization: `Bearer ${token}` };
+	const viewer = await client.get<{ login: string }>('https://api.github.com/user', {
+		headers,
+		provider: 'github',
+	});
+
+	const repositories: GitHubRepository[] = [];
+	for (let page = 1; ; page++) {
+		const result = await client.get<RawRepository[]>(`https://api.github.com/user/repos?affiliation=owner%2Ccollaborator%2Corganization_member&visibility=all&sort=full_name&direction=asc&per_page=100&page=${page}`, {
+			headers,
+			provider: 'github',
+		});
+
+		repositories.push(...result.map(repository => ({
+			id: repository.id,
+			name: repository.name,
+			fullName: repository.full_name,
+			owner: repository.owner.login,
+			ownerType: repository.owner.type,
+			private: repository.private,
+			archived: repository.archived,
+		})));
+
+		if (result.length < 100) break;
+	}
+
+	return {
+		viewerLogin: viewer.login,
+		repositories,
+		defaultScopes: [`${viewer.login}/*`],
 	};
 }
 
-interface PageInfo {
-	endCursor: string | null;
-	hasNextPage: boolean;
-}
-
-interface RateLimitInfo {
-	remaining: number;
-	resetAt: string;
-}
-
-interface GitHubClientOptions {
-	token: string;
-	repositories: string[];
-	fetchImpl?: typeof fetch;
-	now?: Date;
-}
-
-interface FetchResult {
-	items: PullRequestItem[];
-	rateLimit: RateLimitInfo | null;
-}
-
 export function createGitHubClient(options: GitHubClientOptions) {
-	const { token, repositories, fetchImpl = fetch, now = new Date() } = options;
-
-	const unconfigured = !token || repositories.length === 0;
+	const { token, repositories: configuredScopes, windowDays = 7, now = new Date() } = options;
+	const client = options.httpClient ?? httpClient;
 
 	async function fetchPullRequests(): Promise<{ items: PullRequestItem[]; unconfigured: boolean }> {
-		if (unconfigured) {
-			return { items: [], unconfigured: true };
-		}
+		if (!token) return { items: [], unconfigured: true };
 
-		const cutoffDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-		const cutoffIso = cutoffDate.toISOString();
+		const catalog = await discoverGitHubRepositories(token, client);
+		const scopes = configuredScopes.length > 0 ? configuredScopes : catalog.defaultScopes;
+		const selectedRepositories = expandRepositoryScopes(scopes, catalog.repositories);
+		if (selectedRepositories.length === 0) return { items: [], unconfigured: false };
 
-		const results: PullRequestItem[] = [];
-		let globalRateLimit: RateLimitInfo | null = null;
+		const boundedWindowDays = Math.max(1, Math.min(30, Math.trunc(windowDays)));
+		const cutoff = new Date(now.getTime() - boundedWindowDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const items = new Map<string, PullRequestItem>();
 
-		const repositoryChunks = chunkArray(repositories, 4);
-
-		for (const chunk of repositoryChunks) {
-			const repoPromises = chunk.map(async (fullName) => {
-				const [owner, repo] = fullName.split('/');
-				if (!owner || !repo) {
-					throw new Error(`Invalid repository format: ${fullName}`);
-				}
-
+		for (const repositoryChunk of chunkRepositoriesForSearch(selectedRepositories, catalog.viewerLogin, cutoff)) {
+			await Promise.all(INVOLVEMENT_QUALIFIERS.map(async involvement => {
 				let cursor: string | null = null;
 				let hasNextPage = true;
-				let repoRateLimit: RateLimitInfo | null = null;
 
 				while (hasNextPage) {
-					const query = buildGraphQLQuery(cursor);
-					const queryVars = { owner, repo, cursor };
-
-					const gqlResponse: GitHubGraphQLResponse = await requestJson<GitHubGraphQLResponse>({
-						url: 'https://api.github.com/graphql',
-						method: 'POST',
+					const query = buildSearchQuery(catalog.viewerLogin, cutoff, repositoryChunk, involvement);
+					const response: SearchResponse = await client.post<SearchResponse>('https://api.github.com/graphql', {
 						headers: {
+							...GITHUB_HEADERS,
 							Authorization: `Bearer ${token}`,
 							'Content-Type': 'application/json',
 						},
-						body: JSON.stringify({ query, variables: queryVars }),
+						body: JSON.stringify({ query: buildSearchGraphQLQuery(), variables: { query, cursor } }),
 						provider: 'github',
-						fetchImpl,
 					});
 
-					if (gqlResponse.errors && gqlResponse.errors.length > 0) {
-						throw new IntegrationRequestError(
-							'GitHub GraphQL error',
-							'github',
-							null,
-							null
-						);
+					if (response.errors?.length) {
+						throw new IntegrationRequestError('GitHub GraphQL error', 'github', null, null);
 					}
 
-					const repoData = gqlResponse.data?.repository;
-					if (!repoData) {
-						throw new IntegrationRequestError(
-							'Repository not found',
-							'github',
-							404,
-							null
-						);
+					const search: NonNullable<SearchResponse['data']>['search'] = response.data?.search;
+					if (!search) break;
+					for (const pullRequest of search.nodes) {
+						if (pullRequest.__typename !== 'PullRequest') continue;
+						items.set(pullRequest.id, normalizePullRequest(pullRequest));
 					}
 
-					const pullRequests = repoData.pullRequests;
-
-					if (pullRequests.rateLimit) {
-						repoRateLimit = pullRequests.rateLimit;
-						if (globalRateLimit === null || pullRequests.rateLimit.remaining < globalRateLimit.remaining) {
-							globalRateLimit = pullRequests.rateLimit;
-						}
-
-						if (pullRequests.rateLimit.remaining === 0) {
-							throw new IntegrationRequestError(
-								`Rate limit resets at ${pullRequests.rateLimit.resetAt}`,
-								'github',
-								429,
-								null
-							);
-						}
-					}
-
-					const prs = pullRequests.nodes;
-
-					if (prs.length === 0) {
-						hasNextPage = false;
-						break;
-					}
-
-					const oldestInPage = prs[prs.length - 1].updatedAt;
-					if (oldestInPage < cutoffIso) {
-						const filteredPrs = prs.filter((pr: RawPullRequest) => pr.updatedAt >= cutoffIso);
-						results.push(...filteredPrs.map((pr: RawPullRequest) => normalizePullRequest(pr, fullName)));
-						hasNextPage = false;
-						break;
-					}
-
-					results.push(...prs.map((pr: RawPullRequest) => normalizePullRequest(pr, fullName)));
-
-					hasNextPage = pullRequests.pageInfo.hasNextPage;
-					cursor = pullRequests.pageInfo.endCursor;
+					hasNextPage = search.pageInfo.hasNextPage && !!search.pageInfo.endCursor;
+					cursor = search.pageInfo.endCursor;
 				}
-
-				return { fullName, rateLimit: repoRateLimit };
-			});
-
-			const repoResults = await Promise.all(repoPromises);
-
-			for (const result of repoResults) {
-				if (result.rateLimit) {
-					if (globalRateLimit === null || result.rateLimit.remaining < globalRateLimit.remaining) {
-						globalRateLimit = result.rateLimit;
-					}
-				}
-			}
+			}));
 		}
-
-		results.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
-
-		return { items: results, unconfigured: false };
-	}
-
-	function normalizePullRequest(pr: RawPullRequest, repository: string): PullRequestItem {
-		let state: 'open' | 'draft' | 'merged' | 'closed';
-		if (pr.isDraft) {
-			state = 'draft';
-		} else if (pr.state === 'OPEN') {
-			state = 'open';
-		} else if (pr.state === 'MERGED' || pr.mergedAt !== null) {
-			state = 'merged';
-		} else {
-			state = 'closed';
-		}
-
-		let reviewState: ReviewState;
-		if (pr.isDraft) {
-			reviewState = 'draft';
-		} else if (pr.reviewDecision === 'APPROVED') {
-			reviewState = 'approved';
-		} else if (pr.reviewDecision === 'CHANGES_REQUESTED') {
-			reviewState = 'changes_requested';
-		} else {
-			reviewState = 'review_required';
-		}
-
-		const labels = pr.labels.nodes.map((l) => l.name).sort().slice(0, 20);
 
 		return {
-			id: pr.id,
-			repository,
-			number: pr.number,
-			title: pr.title,
-			author: pr.author?.login ?? 'Unknown',
-			reviewState,
-			state,
-			createdAt: pr.createdAt,
-			updatedAt: pr.updatedAt,
-			url: pr.url,
-			labels,
+			items: Array.from(items.values()).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+			unconfigured: false,
 		};
 	}
 
 	return { fetchPullRequests };
 }
 
-function buildGraphQLQuery(cursor: string | null): string {
-	return `query($owner: String!, $repo: String!, $cursor: String) {
-		repository(owner: $owner, name: $repo) {
-			pullRequests(first: 100, after: $cursor, orderBy: {field: UPDATED_AT, direction: DESC}, states: [OPEN, CLOSED, MERGED]) {
-				nodes {
+function expandRepositoryScopes(scopes: string[], repositories: GitHubRepository[]): string[] {
+	const selected = new Set<string>();
+	for (const scope of scopes) {
+		if (scope.endsWith('/*')) {
+			const owner = scope.slice(0, -2).toLowerCase();
+			for (const repository of repositories) {
+				if (repository.owner.toLowerCase() === owner) selected.add(repository.fullName);
+			}
+		} else if (repositories.some(repository => repository.fullName.toLowerCase() === scope.toLowerCase())) {
+			selected.add(repositories.find(repository => repository.fullName.toLowerCase() === scope.toLowerCase())!.fullName);
+		}
+	}
+	return Array.from(selected).sort((a, b) => a.localeCompare(b));
+}
+
+function buildSearchQuery(
+	viewer: string,
+	cutoff: string,
+	repositories: string[],
+	involvement: typeof INVOLVEMENT_QUALIFIERS[number]
+): string {
+	const repositoryScope = repositories.map(repository => `repo:${repository}`).join(' ');
+	return `is:pr updated:>=${cutoff} ${involvement}:${viewer} ${repositoryScope}`;
+}
+
+function buildSearchGraphQLQuery(): string {
+	return `query($query: String!, $cursor: String) {
+		search(query: $query, type: ISSUE, first: 100, after: $cursor) {
+			nodes {
+				__typename
+				... on PullRequest {
 					id
 					number
 					title
@@ -233,37 +185,57 @@ function buildGraphQLQuery(cursor: string | null): string {
 					isDraft
 					state
 					mergedAt
-					author {
-						login
-					}
+					author { login }
 					reviewDecision
-					labels(first: 20) {
-						nodes {
-							name
-						}
-					}
-				}
-				pageInfo {
-					endCursor
-					hasNextPage
-				}
-				rateLimit {
-					remaining
-					resetAt
+					repository { nameWithOwner }
+					labels(first: 20) { nodes { name } }
 				}
 			}
-		}
-		rateLimit {
-			remaining
-			resetAt
+			pageInfo { endCursor hasNextPage }
 		}
 	}`;
 }
 
-function chunkArray<T>(array: T[], size: number): T[][] {
-	const chunks: T[][] = [];
-	for (let i = 0; i < array.length; i += size) {
-		chunks.push(array.slice(i, i + size));
+function normalizePullRequest(pullRequest: RawPullRequest): PullRequestItem {
+	let state: PullRequestItem['state'];
+	if (pullRequest.isDraft) state = 'draft';
+	else if (pullRequest.state === 'OPEN') state = 'open';
+	else if (pullRequest.state === 'MERGED' || pullRequest.mergedAt) state = 'merged';
+	else state = 'closed';
+
+	let reviewState: ReviewState;
+	if (pullRequest.isDraft) reviewState = 'draft';
+	else if (pullRequest.reviewDecision === 'APPROVED') reviewState = 'approved';
+	else if (pullRequest.reviewDecision === 'CHANGES_REQUESTED') reviewState = 'changes_requested';
+	else reviewState = 'review_required';
+
+	return {
+		id: pullRequest.id,
+		repository: pullRequest.repository.nameWithOwner,
+		number: pullRequest.number,
+		title: pullRequest.title,
+		author: pullRequest.author?.login ?? 'Unknown',
+		reviewState,
+		state,
+		createdAt: pullRequest.createdAt,
+		updatedAt: pullRequest.updatedAt,
+		url: pullRequest.url,
+		labels: pullRequest.labels.nodes.map(label => label.name).sort().slice(0, 20),
+	};
+}
+
+function chunkRepositoriesForSearch(repositories: string[], viewer: string, cutoff: string): string[][] {
+	const chunks: string[][] = [];
+	let current: string[] = [];
+	for (const repository of repositories) {
+		const candidate = [...current, repository];
+		if (current.length > 0 && buildSearchQuery(viewer, cutoff, candidate, 'review-requested').length > 240) {
+			chunks.push(current);
+			current = [repository];
+		} else {
+			current = candidate;
+		}
 	}
+	if (current.length > 0) chunks.push(current);
 	return chunks;
 }

@@ -1,28 +1,28 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { DashboardResponse } from '@/types/dashboard';
-import { createDashboardService, GitHubClientFactory, CalendarClientFactory } from '@/core/dashboard';
+import { createDashboardService, GitHubClientFactory } from '@/core/dashboard';
+import { Cache } from '@/primitives/cache';
+import { clearPrimitiveRuntime } from '@/runtime/primitiveRegistry';
 
 const FRESH_CACHE_KEY = 'dashboard:fresh';
 const LAST_SUCCESS_CACHE_KEY = 'dashboard:last-success';
+const repositoryMocks = vi.hoisted(() => ({ getConfig: vi.fn() }));
 
 vi.mock('@/config/variables', () => ({
+	env: (key: string) => key === 'DB_PATH' ? ':memory:' : undefined,
 	default: {
 		DASHBOARD_CONFIG_PATH: 'config/dashboard.json',
 		DASHBOARD_CACHE_TTL_SECONDS: 60,
 		DASHBOARD_REQUEST_TIMEOUT_MS: 5000,
 		DASHBOARD_RETRY_COUNT: 2,
-		GITHUB_TOKEN: 'test-token',
-		GOOGLE_CLIENT_ID: 'test-client-id',
-		GOOGLE_CLIENT_SECRET: 'test-client-secret',
-		GOOGLE_REFRESH_TOKEN: 'test-refresh-token',
 	},
 }));
 
-vi.mock('@/config/dashboard', () => ({
-	loadDashboardConfig: vi.fn(),
+vi.mock('@/repositories/DashboardConfigRepository', () => ({
+	DashboardConfigRepository: class {
+		getConfig = repositoryMocks.getConfig;
+	},
 }));
-
-import { loadDashboardConfig } from '@/config/dashboard';
 
 function createMockCacheDriver(): {
 	driver: {
@@ -67,23 +67,27 @@ function createMockCacheDriver(): {
 describe('DashboardService', () => {
 	let mockCache: ReturnType<typeof createMockCacheDriver>;
 	let fixedNow: Date;
+	const configRepository = { getConfig: repositoryMocks.getConfig } as any;
 
 	const defaultConfig = {
 		displayName: 'Test',
 		timeZone: 'Europe/London',
+		githubToken: 'test-token',
 		github: { repositories: ['owner/repo'] },
-		calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 		shortcutGroups: [],
 	};
 
 	beforeEach(() => {
 		mockCache = createMockCacheDriver();
+		clearPrimitiveRuntime('cache');
+		Cache.configure(mockCache.driver);
 		fixedNow = new Date('2024-06-15T12:00:00Z');
 		vi.clearAllMocks();
-		(loadDashboardConfig as ReturnType<typeof vi.fn>).mockResolvedValue(defaultConfig);
+		repositoryMocks.getConfig.mockResolvedValue(defaultConfig);
 	});
 
 	afterEach(() => {
+		clearPrimitiveRuntime('cache');
 		vi.restoreAllMocks();
 	});
 
@@ -101,23 +105,19 @@ describe('DashboardService', () => {
 						counts: { open: 1, draft: 0, merged: 0, closed: 0 },
 						items: [],
 					},
-					calendar: { today: [], upcoming: [] },
 					shortcutGroups: [],
 					integrations: {
 						github: { state: 'ok', lastSuccessAt: '2024-06-15T10:00:00Z', message: null },
-						calendar: { state: 'ok', lastSuccessAt: '2024-06-15T10:00:00Z', message: null },
 					},
 				};
 				await mockCache.driver.set(FRESH_CACHE_KEY, cachedData);
 
 				const mockGitHubFactory = vi.fn() as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn() as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				const result = await service.getSnapshot();
@@ -141,11 +141,9 @@ describe('DashboardService', () => {
 						counts: { open: 1, draft: 0, merged: 0, closed: 0 },
 						items: [],
 					},
-					calendar: { today: [], upcoming: [] },
 					shortcutGroups: [],
 					integrations: {
 						github: { state: 'ok', lastSuccessAt: '2024-06-15T10:00:00Z', message: null },
-						calendar: { state: 'ok', lastSuccessAt: '2024-06-15T10:00:00Z', message: null },
 					},
 				};
 				await mockCache.driver.set(LAST_SUCCESS_CACHE_KEY, lastSuccessData);
@@ -153,17 +151,12 @@ describe('DashboardService', () => {
 				const mockGitHubClient = {
 					fetchPullRequests: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
 				};
-				const mockCalendarClient = {
-					fetchEvents: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
-				};
 				const mockGitHubFactory = vi.fn().mockReturnValue(mockGitHubClient) as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn().mockReturnValue(mockCalendarClient) as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				const result = await service.getSnapshot();
@@ -178,23 +171,19 @@ describe('DashboardService', () => {
 				const mockGitHubClient = {
 					fetchPullRequests: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
 				};
-				const mockCalendarClient = {
-					fetchEvents: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
-				};
 				const mockGitHubFactory = vi.fn().mockReturnValue(mockGitHubClient) as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn().mockReturnValue(mockCalendarClient) as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				const result = await service.getSnapshot();
 
 				expect(result.pullRequests).toBeDefined();
-				expect(result.calendar).toBeDefined();
+				expect(result.shortcutGroups).toBeDefined();
+				expect(result.integrations.github.state).toBe('ok');
 			});
 		});
 
@@ -208,17 +197,12 @@ describe('DashboardService', () => {
 						return { items: [], unconfigured: false };
 					}),
 				};
-				const mockCalendarClient = {
-					fetchEvents: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
-				};
 				const mockGitHubFactory = vi.fn().mockReturnValue(mockGitHubClient) as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn().mockReturnValue(mockCalendarClient) as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				const [result1, result2, result3] = await Promise.all([
@@ -253,17 +237,12 @@ describe('DashboardService', () => {
 						unconfigured: false,
 					}),
 				};
-				const mockCalendarClient = {
-					fetchEvents: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
-				};
 				const mockGitHubFactory = vi.fn().mockReturnValue(mockGitHubClient) as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn().mockReturnValue(mockCalendarClient) as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				await service.getSnapshot();
@@ -339,17 +318,12 @@ describe('DashboardService', () => {
 						unconfigured: false,
 					}),
 				};
-				const mockCalendarClient = {
-					fetchEvents: vi.fn().mockResolvedValue({ items: [], unconfigured: false }),
-				};
 				const mockGitHubFactory = vi.fn().mockReturnValue(mockGitHubClient) as unknown as GitHubClientFactory;
-				const mockCalendarFactory = vi.fn().mockReturnValue(mockCalendarClient) as unknown as CalendarClientFactory;
 
 				const service = createDashboardService({
-					cacheDriver: mockCache.driver,
+					configRepository,
 					now: fixedNow,
 					githubClientFactory: mockGitHubFactory,
-					calendarClientFactory: mockCalendarFactory,
 				});
 
 				const result = await service.getSnapshot();

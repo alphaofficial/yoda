@@ -17,12 +17,12 @@ describe('dashboard config validation', () => {
 				displayName: 'Test User',
 				timeZone: 'America/New_York',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			const result = validateDashboardConfig(config);
 			expect(result.displayName).toBe('Test User');
 			expect(result.timeZone).toBe('America/New_York');
+			expect(result.github.windowDays).toBe(7);
 		});
 
 		it('accepts full valid config with shortcuts', () => {
@@ -31,10 +31,7 @@ describe('dashboard config validation', () => {
 				timeZone: 'Europe/London',
 				github: {
 					repositories: ['owner/repo1', 'owner/repo2'],
-				},
-				calendar: {
-					calendarIds: ['primary', 'calendar-id-2'],
-					lookaheadDays: 14,
+					windowDays: 14,
 				},
 				shortcutGroups: [
 					{
@@ -60,6 +57,7 @@ describe('dashboard config validation', () => {
 			const result = validateDashboardConfig(config);
 			expect(result.shortcutGroups).toHaveLength(1);
 			expect(result.shortcutGroups[0].shortcuts).toHaveLength(2);
+			expect(result.github.windowDays).toBe(14);
 		});
 
 		it('accepts all valid icon types', () => {
@@ -75,7 +73,6 @@ describe('dashboard config validation', () => {
 					displayName: 'Test',
 					timeZone: 'UTC',
 					github: { repositories: [] },
-					calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 					shortcutGroups: [
 						{
 							id: 'group',
@@ -95,7 +92,6 @@ describe('dashboard config validation', () => {
 				displayName: 'a'.repeat(60),
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).not.toThrow();
@@ -106,7 +102,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -120,34 +115,13 @@ describe('dashboard config validation', () => {
 			expect(() => validateDashboardConfig(config)).not.toThrow();
 		});
 
-		it('accepts min lookaheadDays (1)', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 1 },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).not.toThrow();
-		});
 
-		it('accepts max lookaheadDays (30)', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 30 },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).not.toThrow();
-		});
 
 		it('accepts valid http URL', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -164,7 +138,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -183,7 +156,6 @@ describe('dashboard config validation', () => {
 					displayName: 'Test',
 					timeZone: 'UTC',
 					github: { repositories: [] },
-					calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 					shortcutGroups: [
 						{
 							id,
@@ -213,7 +185,6 @@ describe('dashboard config validation', () => {
 			const config = {
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('displayName is required');
@@ -224,7 +195,6 @@ describe('dashboard config validation', () => {
 				displayName: '',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -235,7 +205,6 @@ describe('dashboard config validation', () => {
 				displayName: '   ',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -246,7 +215,6 @@ describe('dashboard config validation', () => {
 				displayName: 'a'.repeat(61),
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -256,7 +224,6 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('timeZone is required');
@@ -267,7 +234,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'Invalid/TimeZone',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('Invalid time zone');
@@ -278,7 +244,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: {},
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('github.repositories must be an array');
@@ -291,7 +256,6 @@ describe('dashboard config validation', () => {
 					displayName: 'Test',
 					timeZone: 'UTC',
 					github: { repositories: [repo] },
-					calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 					shortcutGroups: [],
 				};
 				expect(() => validateDashboardConfig(config)).toThrow('Invalid repository format');
@@ -303,62 +267,20 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: ['owner/repo', 'owner/repo'] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('Duplicate repository');
 		});
 
-		it('rejects missing calendar.lookaheadDays', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'] },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).toThrow('lookaheadDays is required');
-		});
 
-		it('rejects lookaheadDays below 1', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 0 },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).toThrow('lookaheadDays must be an integer from 1 to 30');
-		});
 
-		it('rejects lookaheadDays above 30', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 31 },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).toThrow('lookaheadDays must be an integer from 1 to 30');
-		});
 
-		it('rejects non-integer lookaheadDays', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7.5 },
-				shortcutGroups: [],
-			};
-			expect(() => validateDashboardConfig(config)).toThrow('lookaheadDays must be an integer from 1 to 30');
-		});
 
 		it('rejects invalid group ID', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'Invalid-ID',
@@ -375,7 +297,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: '-invalid',
@@ -392,7 +313,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{ id: 'group', label: 'Group 1', shortcuts: [] },
 					{ id: 'group', label: 'Group 2', shortcuts: [] },
@@ -406,7 +326,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -425,7 +344,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -445,7 +363,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -466,7 +383,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -483,7 +399,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -500,7 +415,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -517,7 +431,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -534,7 +447,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -551,7 +463,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -568,7 +479,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -585,7 +495,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -604,7 +513,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -621,7 +529,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -638,7 +545,6 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: { repositories: [] },
-				calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -671,7 +577,6 @@ describe('shortcut persistence', () => {
 		displayName: 'Test',
 		timeZone: 'UTC',
 		github: { repositories: [] },
-		calendar: { calendarIds: ['primary'], lookaheadDays: 7 },
 		shortcutGroups: [
 			{
 				id: 'group1',

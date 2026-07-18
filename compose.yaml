@@ -4,32 +4,18 @@ services:
     env_file:
       - .env
     environment:
-      - DASHBOARD_CONFIG_PATH=/config/dashboard.json
+      - DB_PATH=/data/dashboard.db
     volumes:
-      - ./config:/config
+      - dashboard-data:/data
+    ports:
+      - "127.0.0.1:${PORT:?PORT must be set in .env}:${PORT:?PORT must be set in .env}"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/healthz"]
+      test: ["CMD-SHELL", "wget -qO- http://localhost:$${PORT}/healthz"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 5s
     restart: unless-stopped
-    networks:
-      - dashboard
 
-  caddy:
-    image: caddy:2-alpine
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-    depends_on:
-      app:
-        condition: service_healthy
-    restart: unless-stopped
-    networks:
-      - dashboard
-    ports:
-      - "127.0.0.1:80:80"
-
-networks:
-  dashboard:
-    driver: bridge
+volumes:
+  dashboard-data:

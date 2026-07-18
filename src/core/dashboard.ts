@@ -1,19 +1,17 @@
 import { Cache } from '@/primitives/cache';
 import { PinoLogger } from '@/logger/pinoLogger';
-import { loadDashboardConfig } from '@/config/dashboard';
 import { createGitHubClient } from '@/integrations/github';
-import { createGoogleCalendarClient } from '@/integrations/calendar';
+import { httpClient, type HttpClient } from '@/integrations/http';
 import variables from '@/config/variables';
+import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
 import type {
 	DashboardResponse,
 	PullRequestItem,
-	CalendarEventItem,
 	ShortcutGroup,
 	ShortcutIcon,
 	IntegrationHealth,
 	DashboardConfig,
 } from '@/types/dashboard';
-import type { CacheDriver } from '@/primitives/cache';
 
 const FRESH_CACHE_KEY = 'dashboard:fresh';
 const LAST_SUCCESS_CACHE_KEY = 'dashboard:last-success';
@@ -26,144 +24,135 @@ function calculatePrCounts(items: PullRequestItem[]): { open: number; draft: num
 	return counts;
 }
 
-function bucketCalendarEvents(
-	items: CalendarEventItem[],
-	_timeZone: string,
-	now: Date
-): { today: CalendarEventItem[]; upcoming: CalendarEventItem[] } {
-	const todayDateStr = now.toISOString().split('T')[0];
+function shortcutGroupsFromConfig(config: DashboardConfig): ShortcutGroup[] {
+	return config.shortcutGroups.map(group => ({
+		id: group.id,
+		label: group.label,
+		shortcuts: group.shortcuts.map(shortcut => ({
+			id: shortcut.id,
+			label: shortcut.label,
+			url: shortcut.url,
+			icon: shortcut.icon as ShortcutIcon,
+		})),
+	}));
+}
 
-	const today: CalendarEventItem[] = [];
-	const upcoming: CalendarEventItem[] = [];
+function localSnapshot(config: DashboardConfig, prior?: DashboardResponse): DashboardResponse {
+	const now = new Date().toISOString();
+	const githubTokenConfigured = !!config.githubToken;
+	return {
+		generatedAt: now,
+		lastRefreshAt: prior?.lastRefreshAt ?? null,
+		stale: true,
+		timeZone: config.timeZone,
+		displayName: config.displayName,
+		shortcutLimit: config.shortcutLimit ?? 8,
+		githubTokenConfigured,
+		pullRequests: {
+			windowDays: config.github.windowDays ?? 7,
+			counts: prior?.pullRequests.counts ?? { open: 0, draft: 0, merged: 0, closed: 0 },
+			items: prior?.pullRequests.items ?? [],
+		},
+		shortcutGroups: shortcutGroupsFromConfig(config),
+		integrations: {
+			github: githubTokenConfigured
+				? prior?.integrations.github ?? { state: 'ok', lastSuccessAt: null, message: 'Refreshing GitHub data.' }
+				: { state: 'unconfigured', lastSuccessAt: null, message: 'Add github configuration to enable this integration.' },
+		},
+	};
+}
 
-	for (const item of items) {
-		const itemDateStr = item.start.split('T')[0];
-		if (itemDateStr === todayDateStr) {
-			today.push(item);
-		} else {
-			upcoming.push(item);
-		}
-	}
+export async function primeDashboardSnapshot(config: DashboardConfig): Promise<void> {
+	const prior = await Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
+	if (!prior) await Cache.set(LAST_SUCCESS_CACHE_KEY, localSnapshot(config));
+}
 
-	return { today, upcoming };
+export async function invalidateDashboardSnapshot(config: DashboardConfig): Promise<void> {
+	const prior = await Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
+	await Cache.set(LAST_SUCCESS_CACHE_KEY, localSnapshot(config, prior));
+	await Cache.delete(FRESH_CACHE_KEY);
 }
 
 export interface GitHubClient {
 	fetchPullRequests(): Promise<{ items: PullRequestItem[]; unconfigured: boolean }>;
 }
 
-export interface CalendarClient {
-	fetchEvents(): Promise<{ items: CalendarEventItem[]; unconfigured: boolean }>;
-}
-
 export type GitHubClientFactory = (options: {
 	token: string;
 	repositories: string[];
-	fetchImpl?: typeof fetch;
+	windowDays?: number;
+	httpClient?: HttpClient;
 	now?: Date;
 }) => GitHubClient;
-
-export type CalendarClientFactory = (options: {
-	clientId: string;
-	clientSecret: string;
-	refreshToken: string;
-	calendarIds: string[];
-	timeZone: string;
-	lookaheadDays: number;
-	fetchImpl?: typeof fetch;
-	now?: Date;
-}) => CalendarClient;
 
 export interface DashboardService {
 	getSnapshot(): Promise<DashboardResponse>;
 }
 
 export interface DashboardServiceOptions {
-	cacheDriver: CacheDriver;
-	fetchImpl?: typeof fetch;
+	configRepository: DashboardConfigRepository;
+	httpClient?: HttpClient;
 	now?: Date;
 	githubClientFactory?: GitHubClientFactory;
-	calendarClientFactory?: CalendarClientFactory;
+}
+
+interface GitHubFetchResult {
+	items: PullRequestItem[];
+	error: string | null;
 }
 
 export function createDashboardService(options: DashboardServiceOptions): DashboardService {
 	const {
-		cacheDriver,
-		fetchImpl = fetch,
+		configRepository,
 		now = new Date(),
 		githubClientFactory = createGitHubClient,
-		calendarClientFactory = createGoogleCalendarClient,
 	} = options;
+	const apiClient = options.httpClient ?? httpClient;
 
 	let refreshPromise: Promise<DashboardResponse> | null = null;
 
 	async function getFreshCache(): Promise<DashboardResponse | undefined> {
-		return cacheDriver.get<DashboardResponse>(FRESH_CACHE_KEY);
+		return Cache.get<DashboardResponse>(FRESH_CACHE_KEY);
 	}
 
 	async function getLastSuccessCache(): Promise<DashboardResponse | undefined> {
-		return cacheDriver.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
+		return Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
 	}
 
 	async function setFreshCache(value: DashboardResponse): Promise<void> {
-		await cacheDriver.set(FRESH_CACHE_KEY, value, variables.DASHBOARD_CACHE_TTL_SECONDS);
+		await Cache.set(FRESH_CACHE_KEY, value, variables.DASHBOARD_CACHE_TTL_SECONDS);
 	}
 
 	async function setLastSuccessCache(value: DashboardResponse): Promise<void> {
-		await cacheDriver.set(LAST_SUCCESS_CACHE_KEY, value);
+		await Cache.set(LAST_SUCCESS_CACHE_KEY, value);
+	}
+
+	async function fetchGitHubPullRequests(config: DashboardConfig, requestedAt: Date): Promise<GitHubFetchResult> {
+		if (!config.githubToken) return { items: [], error: null };
+
+		try {
+			const githubClient = githubClientFactory({
+				token: config.githubToken,
+				repositories: config.github.repositories,
+				windowDays: config.github.windowDays ?? 7,
+				httpClient: apiClient,
+				now: requestedAt,
+			});
+			const result = await githubClient.fetchPullRequests();
+			return { items: result.items, error: null };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : 'Unknown error';
+			return { items: [], error: message.slice(0, 200) };
+		}
 	}
 
 	async function refresh(config: DashboardConfig, refreshStartTime: Date): Promise<DashboardResponse> {
 		const priorSnapshot = await getLastSuccessCache();
 
-		const githubConfigured = !!variables.GITHUB_TOKEN && config.github.repositories.length > 0;
-		const calendarConfigured =
-			!!variables.GOOGLE_CLIENT_ID &&
-			!!variables.GOOGLE_CLIENT_SECRET &&
-			!!variables.GOOGLE_REFRESH_TOKEN &&
-			config.calendar.calendarIds.length > 0;
-
-		const githubPromise = githubConfigured
-			? (async () => {
-					try {
-						const client = githubClientFactory({
-							token: variables.GITHUB_TOKEN!,
-							repositories: config.github.repositories,
-							fetchImpl,
-							now: refreshStartTime,
-						});
-						const result = await client.fetchPullRequests();
-						return { items: result.items, unconfigured: result.unconfigured, error: null };
-					} catch (err) {
-						const message = err instanceof Error ? err.message : 'Unknown error';
-						return { items: [] as PullRequestItem[], unconfigured: false, error: message.slice(0, 200) };
-					}
-			  })()
-			: Promise.resolve({ items: [] as PullRequestItem[], unconfigured: true, error: null });
-
-		const calendarPromise = calendarConfigured
-			? (async () => {
-					try {
-						const client = calendarClientFactory({
-							clientId: variables.GOOGLE_CLIENT_ID!,
-							clientSecret: variables.GOOGLE_CLIENT_SECRET!,
-							refreshToken: variables.GOOGLE_REFRESH_TOKEN!,
-							calendarIds: config.calendar.calendarIds,
-							timeZone: config.timeZone,
-							lookaheadDays: config.calendar.lookaheadDays,
-							fetchImpl,
-							now: refreshStartTime,
-						});
-						const result = await client.fetchEvents();
-						return { items: result.items, unconfigured: result.unconfigured, error: null };
-					} catch (err) {
-						const message = err instanceof Error ? err.message : 'Unknown error';
-						return { items: [] as CalendarEventItem[], unconfigured: false, error: message.slice(0, 200) };
-					}
-			  })()
-			: Promise.resolve({ items: [] as CalendarEventItem[], unconfigured: true, error: null });
-
-		const [githubResult, calendarResult] = await Promise.all([githubPromise, calendarPromise]);
+		const githubToken = config.githubToken;
+		const githubConfigured = !!githubToken;
+		const pullRequestWindowDays = config.github.windowDays ?? 7;
+		const githubResult = await fetchGitHubPullRequests(config, refreshStartTime);
 
 		if (githubResult.error) {
 			PinoLogger.warn({
@@ -173,16 +162,7 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 			});
 		}
 
-		if (calendarResult.error) {
-			PinoLogger.warn({
-				scope: 'dashboard',
-				message: 'Calendar integration failed',
-				error: calendarResult.error,
-			});
-		}
-
 		let githubHealth: IntegrationHealth;
-		let calendarHealth: IntegrationHealth;
 
 		if (!githubConfigured) {
 			githubHealth = {
@@ -205,51 +185,17 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 			};
 		}
 
-		if (!calendarConfigured) {
-			calendarHealth = {
-				state: 'unconfigured',
-				lastSuccessAt: null,
-				message: 'Add calendar configuration to enable this integration.',
-			};
-		} else if (calendarResult.error) {
-			const priorHealth = priorSnapshot?.integrations.calendar;
-			calendarHealth = {
-				state: 'error',
-				lastSuccessAt: priorHealth?.lastSuccessAt ?? null,
-				message: calendarResult.error,
-			};
-		} else {
-			calendarHealth = {
-				state: 'ok',
-				lastSuccessAt: refreshStartTime.toISOString(),
-				message: null,
-			};
-		}
-
 		const githubItems = githubResult.items;
-		const calendarItems = calendarResult.items;
 
 		const pullRequests = {
-			windowDays: 7 as const,
+			windowDays: pullRequestWindowDays,
 			counts: calculatePrCounts(githubItems),
 			items: githubItems,
 		};
 
-		const { today, upcoming } = bucketCalendarEvents(calendarItems, config.timeZone, refreshStartTime);
-		const calendar = { today, upcoming };
+		const shortcutGroups = shortcutGroupsFromConfig(config);
 
-		const shortcutGroups: ShortcutGroup[] = config.shortcutGroups.map(group => ({
-			id: group.id,
-			label: group.label,
-			shortcuts: group.shortcuts.map(s => ({
-				id: s.id,
-				label: s.label,
-				url: s.url,
-				icon: s.icon as ShortcutIcon,
-			})),
-		}));
-
-		const stale = githubHealth.state === 'error' || calendarHealth.state === 'error';
+		const stale = githubHealth.state === 'error';
 
 		const snapshot: DashboardResponse = {
 			generatedAt: refreshStartTime.toISOString(),
@@ -257,12 +203,12 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 			stale,
 			timeZone: config.timeZone,
 			displayName: config.displayName,
+			shortcutLimit: config.shortcutLimit ?? 8,
+			githubTokenConfigured: !!githubToken,
 			pullRequests,
-			calendar,
 			shortcutGroups,
 			integrations: {
 				github: githubHealth,
-				calendar: calendarHealth,
 			},
 		};
 
@@ -286,12 +232,13 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 			if (!refreshPromise) {
 				refreshPromise = (async () => {
 					try {
-						const config = await loadDashboardConfig(variables.DASHBOARD_CONFIG_PATH);
+						const config = await configRepository.getConfig();
 						return refresh(config, new Date());
 					} finally {
 						refreshPromise = null;
 					}
 				})();
+				void refreshPromise.catch(err => PinoLogger.warn({ scope: 'dashboard', message: 'Background refresh failed', error: err instanceof Error ? err.message : 'Unknown error' }));
 			}
 
 			return {
@@ -304,7 +251,7 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 		if (!refreshPromise) {
 			refreshPromise = (async () => {
 				try {
-					const config = await loadDashboardConfig(variables.DASHBOARD_CONFIG_PATH);
+					const config = await configRepository.getConfig();
 					return refresh(config, new Date());
 				} finally {
 					refreshPromise = null;
@@ -316,13 +263,4 @@ export function createDashboardService(options: DashboardServiceOptions): Dashbo
 	}
 
 	return { getSnapshot };
-}
-
-let dashboardServiceInstance: DashboardService | null = null;
-
-export function getDashboardService(): DashboardService {
-	if (!dashboardServiceInstance) {
-		dashboardServiceInstance = createDashboardService({ cacheDriver: Cache });
-	}
-	return dashboardServiceInstance;
 }

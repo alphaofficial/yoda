@@ -65,8 +65,8 @@ export class SessionStore extends Store {
       const parsed = parseToken(sid);
       if (!parsed) return callback(null, null);
 
-      const em = this.orm.em.fork();
-      const session = await em.findOne(Session, { id: parsed.id });
+      const db = this.orm.em.fork();
+      const session = await db.findOne(Session, { id: parsed.id });
 
       if (!session) return callback(null, null);
 
@@ -75,7 +75,7 @@ export class SessionStore extends Store {
       }
 
       if (this.isExpired(session)) {
-        await em.nativeDelete(Session, { id: parsed.id });
+        await db.nativeDelete(Session, { id: parsed.id });
         return callback(null, null);
       }
 
@@ -90,12 +90,12 @@ export class SessionStore extends Store {
       const parsed = parseToken(sid);
       if (!parsed) throw new Error('Invalid session token format');
 
-      const em = this.orm.em.fork();
+      const db = this.orm.em.fork();
       const payload = JSON.stringify(session);
       const now = Math.floor(Date.now() / 1000);
       const requestData = this.requestStore.get(sid);
 
-      const existing = await em.findOne(Session, { id: parsed.id });
+      const existing = await db.findOne(Session, { id: parsed.id });
 
       if (existing) {
         if (!secretMatches(parsed.secret, existing.secret_hash)) {
@@ -104,9 +104,9 @@ export class SessionStore extends Store {
         existing.payload = payload;
         existing.last_activity = now;
         existing.user_id = session.userId || undefined;
-        await em.flush();
+        await db.flush();
       } else {
-        const record = em.create(Session, {
+        const record = db.create(Session, {
           id: parsed.id,
           secret_hash: hashSecret(parsed.secret).toString('hex'),
           payload,
@@ -116,7 +116,7 @@ export class SessionStore extends Store {
           ip_address: requestData?.ip || undefined,
           user_agent: requestData?.userAgent || undefined,
         });
-        await em.persistAndFlush(record);
+        await db.persist(record).flush();
       }
 
       callback?.();
@@ -132,8 +132,8 @@ export class SessionStore extends Store {
         this.requestStore.delete(sid);
         return callback?.();
       }
-      const em = this.orm.em.fork();
-      await em.nativeDelete(Session, { id: parsed.id });
+      const db = this.orm.em.fork();
+      await db.nativeDelete(Session, { id: parsed.id });
       this.requestStore.delete(sid);
       callback?.();
     } catch (error) {
@@ -146,8 +146,8 @@ export class SessionStore extends Store {
       const parsed = parseToken(sid);
       if (!parsed) return callback?.();
 
-      const em = this.orm.em.fork();
-      await em.nativeUpdate(
+      const db = this.orm.em.fork();
+      await db.nativeUpdate(
         Session,
         { id: parsed.id },
         { last_activity: Math.floor(Date.now() / 1000) }
