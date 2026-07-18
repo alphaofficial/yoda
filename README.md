@@ -1,60 +1,66 @@
-# Personal Dashboard
+<h1 align="center">Yoda</h1>
 
-A self-hosted new-tab dashboard that combines GitHub pull requests and persistent shortcuts in one responsive page.
+<h3 align="center">A self-hosted dev dashboard for pull requests, shortcuts, and the links you open every day.</h3>
 
-## Features
+<p align="center">
+  <img src="https://img.shields.io/badge/node-22-000000?style=flat&colorA=000000&colorB=000000" alt="Node 22" />
+  <img src="https://img.shields.io/badge/react-19-000000?style=flat&colorA=000000&colorB=000000" alt="React 19" />
+  <img src="https://img.shields.io/badge/license-MIT-000000?style=flat&colorA=000000&colorB=000000" alt="MIT License" />
+</p>
 
-- Time-zone-correct date, live clock, and morning/afternoon/evening greeting
-- Pull request metrics (open, draft, merged, closed) from configured GitHub repositories
-- Searchable pull requests from every selected repository or organization wildcard
-- Grouped, searchable shortcuts managed from Settings and persisted in SQLite
-- Shortcut JSON export/import for moving shortcuts between instances
-- Stale-while-revalidate caching with server-side refresh deduplication
-- Partial failure handling: healthy integrations render while failed ones retain cached data
+`yoda` is a private, self-hosted dashboard for replacing your browser home page with GitHub pull request context and persistent shortcuts.
 
-## Prerequisites
-
-- Node 22
-- Docker Desktop (for containerized deployment)
-- GitHub fine-grained personal access token with read-only repository access
-
-## Local Development
+## Quick start
 
 ```bash
 npm install
 cp env.example .env
-# Edit .env: set SESSION_SECRET, APP_KEY, PORT, and APP_URL
-npm run build
+npm run migration:run
+npm run dashboard:setup
 npm run start:dev
 ```
 
-Or with live reload:
+Open the URL configured by `APP_URL` in `.env`.
 
-```bash
-npm run start:dev
-```
-
-Navigate to the `APP_URL` configured in `.env`.
+The default example uses `http://localhost:3000`, while the server fallback port is `3008` when `PORT` is not set.
 
 ## Configuration
+
+### Required production secrets
+
+Set these before running with `NODE_ENV=production`:
+
+```bash
+SESSION_SECRET=$(openssl rand -hex 32)
+APP_KEY=$(openssl rand -hex 32)
+```
+
+Development falls back to built-in local-only keys if these variables are not set.
 
 ### Environment variables
 
 | Variable | Default | Description |
-|---|---|---|
-| `SESSION_SECRET` | (required in prod) | Session signing key. Generate with `openssl rand -hex 32` |
-| `APP_KEY` | (required in prod) | HMAC signing key. Generate with `openssl rand -hex 32` |
-| `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Path to the dashboard configuration file |
-| `DASHBOARD_CACHE_TTL_SECONDS` | `60` | Cache TTL in seconds (5–3600) |
-| `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL in seconds (60–86400) |
-| `DASHBOARD_REQUEST_TIMEOUT_MS` | `5000` | HTTP request timeout in milliseconds (1000–30000) |
-| `DASHBOARD_RETRY_COUNT` | `2` | Number of retries for failed requests (0–4) |
+| --- | --- | --- |
+| `NODE_ENV` | `development` | Runtime mode: `development`, `production`, or `test`. |
+| `PORT` | `3008` | HTTP server port when not overridden by `.env`. |
+| `APP_NAME` | `The Boring Architecture` | Page title fallback. |
+| `APP_URL` | `http://localhost:3000` | Canonical app URL used by the browser and deployment docs. |
+| `SESSION_SECRET` | development fallback | Session signing key. Required in production. |
+| `APP_KEY` | development fallback | HMAC signing key. Required in production. |
+| `DB_PATH` | `yoda.db` | SQLite database path. Use a mounted path in Docker. |
+| `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Seed file path for first-time dashboard setup. |
+| `DASHBOARD_CACHE_TTL_SECONDS` | `60` | Dashboard cache TTL. Must be 5–3600 seconds. |
+| `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL. Must be 60–86400 seconds. |
+| `DASHBOARD_REQUEST_TIMEOUT_MS` | `5000` | GitHub request timeout. Must be 1000–30000 ms. |
+| `DASHBOARD_RETRY_COUNT` | `2` | Retry count for failed dashboard requests. Must be 0–4. |
+| `DISABLE_SSR` | `false` | Set to `true` to serve a client-only shell. |
+| `TRUST_PROXY` | `loopback` | Express trust proxy setting for reverse proxy deployments. |
 
-### Dashboard configuration file
+See `env.example` for mail, storage, session, and rate-limit options inherited from the app template.
 
-`config/dashboard.json` is used only to initialize an empty SQLite database. After the first startup, SQLite is the source of truth and changes are made from the Settings page.
+## First-run seed
 
-Example:
+`config/dashboard.json` seeds an empty SQLite database. After setup, SQLite is the source of truth and dashboard changes are made from Settings.
 
 ```json
 {
@@ -70,148 +76,148 @@ Example:
       "id": "shortcuts",
       "label": "Shortcuts",
       "shortcuts": [
-        { "id": "jira", "label": "Jira board", "url": "https://example.atlassian.net/jira/your-work", "icon": "jira" },
-        { "id": "obsidian", "label": "Obsidian vault", "url": "obsidian://open", "icon": "obsidian" }
+        {
+          "id": "jira",
+          "label": "Jira board",
+          "url": "https://example.atlassian.net/jira/your-work",
+          "icon": "jira"
+        }
       ]
     }
   ]
 }
 ```
 
-| Field | Constraints |
-|---|---|
-| `displayName` | 1–60 characters, trimmed |
-| `timeZone` | Valid IANA time zone (e.g. `America/New_York`) |
-| `github.repositories` | Array of `owner/repository` strings, unique |
-| `github.windowDays` | Integer 1–30; defaults to 7 |
-| `shortcutLimit` | Integer 1–50; defaults to 8 |
-| `shortcutGroups[].id` | Lowercase `[a-z0-9][a-z0-9-]{0,39}`, unique per group |
-| `shortcuts[].id` | Lowercase `[a-z0-9][a-z0-9-]{0,39}`, unique within group |
-| `shortcuts[].label` | 1–60 characters, trimmed |
-| `shortcuts[].icon` | One of: `calendar`, `github`, `jira`, `link`, `obsidian` |
-| `shortcuts[].url` | `https://`, `http://` (with host, no credentials), or `obsidian://` |
-
-### GitHub token scope
-
-Generate a fine-grained token at GitHub Settings > Developer settings > Personal access tokens > Fine-grained tokens.
-
-- Select "Only select repositories" and choose the repositories to display.
-- Set "Permissions" > "Contents" to "Read-only".
-- Set "Pull requests" to "Read-only".
-
-The token needs no additional permissions.
-
-## Testing
+Run the seed manually with:
 
 ```bash
-npm run test:typecheck   # TypeScript type checking
-npm test                 # Vitest unit/integration tests
-npm run test:e2e         # Playwright end-to-end tests
-npm run test:all         # All of the above
+npm run dashboard:setup
 ```
 
-## Container Deployment
+The Docker entrypoint runs this automatically after pending migrations.
 
-### Initial setup
+## GitHub setup
 
-1. Copy and edit the environment file. `APP_URL` must use the same hostname you open in the browser.
+1. Open Settings in the dashboard.
+2. Add a GitHub personal access token.
+3. Select repositories or scopes for pull request tracking.
+4. Save settings.
+
+For fine-grained personal access tokens, grant read-only access to the repositories you want to display and enable read permissions for contents and pull requests.
+
+GitHub credentials are stored in SQLite and are not included in shortcut exports.
+
+## Scripts
+
+| Command | Description |
+| --- | --- |
+| `npm run start:dev` | Runs page generation, server reload, client build watch, and SSR build watch. |
+| `npm run build` | Builds client assets, SSR bundle, and server output. |
+| `npm run start:prod` | Starts the compiled server from `dist/index.js`. |
+| `npm run work:dev` | Starts the worker with `tsx`. |
+| `npm run work:prod` | Starts the compiled worker from `dist/worker.js`. |
+| `npm run migration:run` | Applies pending MikroORM migrations. |
+| `npm run migration:create` | Creates a new MikroORM migration. |
+| `npm run migration:revert` | Rolls back the latest migration. |
+| `npm run migration:status` | Checks migration status. |
+| `npm run dashboard:setup` | Seeds dashboard settings and shortcuts when the database is empty. |
+| `npm run test:typecheck` | Runs TypeScript checks for tests. |
+| `npm test` | Runs Vitest integration tests. |
+| `npm run test:e2e` | Runs Playwright tests. |
+| `npm run test:all` | Runs type checks, Vitest, and Playwright. |
+
+## HTTP surface
+
+| Route | Purpose |
+| --- | --- |
+| `GET /` | Dashboard page. |
+| `GET /settings` | Settings page. |
+| `GET /api/settings` | Current dashboard settings without exposing the GitHub token. |
+| `PATCH /api/settings` | Update display, theme, time, token, and dashboard settings. |
+| `GET /api/settings/shortcuts/export` | Download shortcut settings as JSON. |
+| `POST /api/settings/shortcuts/import` | Replace shortcuts from an exported JSON payload. |
+| `PUT /api/settings/repositories` | Replace selected GitHub repositories. |
+| `GET /api/settings/github/repositories` | Discover repositories available to the configured token. |
+| `POST /api/shortcuts` | Create a shortcut. |
+| `PATCH /api/shortcuts/:id` | Update a shortcut. |
+| `DELETE /api/shortcuts/:id` | Delete a shortcut. |
+| `PUT /api/shortcuts/reorder` | Reorder shortcuts inside a group. |
+
+## Docker deployment
+
+Copy and edit the environment file:
 
 ```bash
 cp env.example .env
 ```
 
-2. Review `config/dashboard.json`. It seeds an empty database once; it does not drive the running application afterward.
-
-3. Build the image and create a persistent SQLite volume.
+Build the image and create a persistent SQLite volume:
 
 ```bash
-docker build -t personal-dashboard .
-docker volume create personal-dashboard-data
+docker build -t yoda .
+docker volume create yoda-data
 ```
 
-4. Start the container. This example assumes `PORT=3333` and `APP_URL=http://localhost:3333` in `.env`.
+Run the container:
 
 ```bash
 docker run -d \
-  --name personal-dashboard \
+  --name yoda \
   --restart unless-stopped \
   --env-file .env \
-  --env DB_PATH=/data/dashboard.db \
-  --volume personal-dashboard-data:/data \
+  --env DB_PATH=/data/yoda.db \
+  --volume yoda-data:/data \
   --publish 127.0.0.1:3333:3333 \
-  personal-dashboard
+  yoda
 ```
 
-At every container start, the entrypoint applies only pending MikroORM migrations. It then seeds `config/dashboard.json` only when the dashboard settings table is empty, and finally starts PM2.
+At startup, the container applies pending migrations, seeds an empty dashboard database from `config/dashboard.json`, and starts PM2.
 
-Open `http://localhost:3333`, go to Settings, and save a GitHub token. GitHub credentials are stored in SQLite and are never included in shortcut exports.
-
-### Stop and start
+Useful commands:
 
 ```bash
-docker stop personal-dashboard
-docker start personal-dashboard
+docker logs -f yoda
+docker stop yoda
+docker start yoda
 ```
 
-### View logs
-
-```bash
-docker logs -f personal-dashboard
-```
-
-### Check health
+## Health checks
 
 ```bash
 curl http://localhost:3333/healthz
 curl http://localhost:3333/readyz
 ```
 
-The dashboard is available at the `APP_URL` configured in `.env`.
+## Backups
 
-### Configuration backup
+Back up the SQLite database and `.env` file. For Docker, that means backing up the `yoda-data` volume plus the environment file used to start the container.
 
-Back up the `personal-dashboard-data` volume and `.env`. `config/dashboard.json` is only the initial seed. Shortcut exports are available from Settings and intentionally exclude GitHub credentials.
-
-### Security boundaries
-
-- The example `docker run` command publishes the application exclusively on `127.0.0.1`. No public ingress or port 80 binding is required.
-- Credentials are read from `.env` at runtime and never baked into the image.
-- Runtime configuration is stored in the persistent SQLite volume.
+Shortcut exports are useful for moving dashboard links between instances, but they intentionally exclude the GitHub token and runtime secrets.
 
 ## Troubleshooting
 
-### GitHub authentication failure
+### The dashboard has no pull requests
 
-- Confirm the token is a fine-grained PAT, not a classic token.
-- Verify the token has `Contents: Read` and `Pull requests: Read` permissions for the selected repositories.
-- Check that the token has not expired.
+- Confirm a GitHub token is saved in Settings.
+- Confirm repositories are selected in Settings.
+- Confirm the token has read access to the selected repositories.
 
-### GitHub rate limiting
+### GitHub requests are rate limited
 
-GitHub GraphQL allows 5000 points per hour. The dashboard uses up to 4 points per repository per request. If `remaining` hits zero, the service pauses until `resetAt` and reports a rate-limit error in the integration health badge.
+GitHub GraphQL rate limits are reported through integration health. Increase `DASHBOARD_CACHE_TTL_SECONDS`, reduce selected repositories, or wait until the reset time.
 
-### Dashboard shows stale data
+### Changes do not appear immediately
 
-The cache TTL is controlled by `DASHBOARD_CACHE_TTL_SECONDS`. A stale response triggers a background refresh on the next request. Check `docker logs personal-dashboard` for refresh activity.
+Dashboard data is cached by `DASHBOARD_CACHE_TTL_SECONDS`. Settings and shortcut mutations invalidate the cached snapshot, while stale external data refreshes in the background.
 
-## macOS Chromium Setup
+### Container data disappeared
 
-### Start the service
+Check that `DB_PATH` points to a mounted path such as `/data/yoda.db` and that the `yoda-data` volume is attached when starting the container.
 
-```bash
-docker start personal-dashboard
-```
+## Documentation
 
-### Optional: set as home page
+- `docs/the-boring-architecture.md` documents the underlying application template and runtime architecture.
 
-1. Open `chrome://settings`.
-2. Navigate to **Appearance** > **Home**.
-3. Enable **Show home button**.
-4. Set the URL to the `APP_URL` configured in `.env`.
+## License
 
-### Start Docker at login
-
-1. Open **System Settings** > **General** > **Login Items**.
-2. Enable **Docker Desktop**.
-
-New-tab behavior is active only while Docker Desktop is running and the container is up.
+MIT

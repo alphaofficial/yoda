@@ -58,7 +58,7 @@ export async function exportShortcuts(req: Request, res: Response) {
 	const config = await repository(req).getConfig();
 	const exported = createShortcutSettingsExport(config.shortcutGroups);
 	const date = exported.exportedAt.slice(0, 10);
-	res.attachment(`personal-dashboard-shortcuts-${date}.json`);
+	res.attachment(`yoda-shortcuts-${date}.json`);
 	return res.json(exported);
 }
 

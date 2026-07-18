@@ -4,7 +4,7 @@ import { loadDashboardConfig, validateShortcutInput } from '@/config/dashboard';
 import variables from '@/config/variables';
 import { DashboardSettings } from '@/models/DashboardSettings';
 import { DashboardShortcut } from '@/models/DashboardShortcut';
-import { DashboardConfigError, ShortcutValidationError } from '@/types/dashboard';
+import { ShortcutValidationError } from '@/types/dashboard';
 import type { AddShortcutInput, DashboardConfig, ShortcutConfig, ShortcutGroupConfig, ShortcutIcon, ThemePreference, TimeFormat } from '@/types/dashboard';
 
 function slugId(value: string): string {

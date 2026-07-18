@@ -67,7 +67,7 @@ describe('shortcut settings transfer routes', () => {
 		const response = await request(createApp()).get('/api/settings/shortcuts/export');
 
 		expect(response.status).toBe(200);
-		expect(response.headers['content-disposition']).toMatch(/^attachment; filename="personal-dashboard-shortcuts-\d{4}-\d{2}-\d{2}\.json"$/);
+		expect(response.headers['content-disposition']).toMatch(/^attachment; filename="yoda-shortcuts-\d{4}-\d{2}-\d{2}\.json"$/);
 		expect(response.body.version).toBe(1);
 		expect(response.body.shortcutGroups).toEqual(shortcutGroups);
 		expect(JSON.stringify(response.body)).not.toContain('secret-token');
