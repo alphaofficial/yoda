@@ -24,7 +24,22 @@ describe('dashboard config validation', () => {
 			const result = validateDashboardConfig(config);
 			expect(result.displayName).toBe('Test User');
 			expect(result.timeZone).toBe('America/New_York');
+			expect(result.timeFormat).toBe('12');
 			expect(result.github.windowDays).toBe(7);
+		});
+
+		it('accepts a 24-hour clock', () => {
+			const config = {
+				displayName: 'Test User',
+				timeZone: 'Europe/London',
+				timeFormat: '24',
+				github: { repositories: [] },
+				shortcutGroups: [],
+			};
+
+			const result = validateDashboardConfig(config);
+
+			expect(result.timeFormat).toBe('24');
 		});
 
 		it('accepts full valid config with shortcuts', () => {
@@ -239,6 +254,18 @@ describe('dashboard config validation', () => {
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('Invalid time zone');
+		});
+
+		it('rejects an invalid time format', () => {
+			const config = {
+				displayName: 'Test',
+				timeZone: 'UTC',
+				timeFormat: 'twenty-four',
+				github: { repositories: [] },
+				shortcutGroups: [],
+			};
+
+			expect(() => validateDashboardConfig(config)).toThrow('timeFormat must be 12 or 24');
 		});
 
 		it('rejects missing github.repositories', () => {

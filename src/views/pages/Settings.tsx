@@ -23,7 +23,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/views/compon
 import { Input } from '@/views/components/ui/input';
 import { Label } from '@/views/components/ui/label';
 import { Select } from '@/views/components/ui/select';
-import type { GitHubRepository, GitHubRepositoryCatalog, ShortcutGroupConfig, ShortcutItem } from '@/types/dashboard';
+import type { GitHubRepository, GitHubRepositoryCatalog, ShortcutGroupConfig, ShortcutItem, ThemePreference, TimeFormat } from '@/types/dashboard';
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
 type SettingsSection = 'general' | 'github' | 'shortcuts';
@@ -31,6 +31,8 @@ type SettingsSection = 'general' | 'github' | 'shortcuts';
 interface SettingsData {
 	displayName: string;
 	timeZone: string;
+	timeFormat: TimeFormat;
+	theme: ThemePreference;
 	shortcutLimit: number;
 	pullRequestWindowDays: number;
 	githubTokenConfigured: boolean;
@@ -229,6 +231,8 @@ export default function Settings() {
 	const [activeSection, setActiveSection] = useState<SettingsSection>(initialSection);
 	const [displayName, setDisplayName] = useState(settings.displayName);
 	const [timeZone, setTimeZone] = useState(settings.timeZone);
+	const [timeFormat, setTimeFormat] = useState<TimeFormat>(settings.timeFormat ?? '12');
+	const [theme, setTheme] = useState<ThemePreference>(settings.theme ?? 'light');
 	const [shortcutLimit, setShortcutLimit] = useState(settings.shortcutLimit);
 	const [pullRequestWindowDays, setPullRequestWindowDays] = useState(settings.pullRequestWindowDays ?? 7);
 	const [token, setToken] = useState('');
@@ -274,6 +278,11 @@ export default function Settings() {
 		}
 	}, [activeSection]);
 
+	useEffect(() => {
+		document.documentElement.dataset.theme = theme;
+		window.dispatchEvent(new Event('yoda:theme-change'));
+	}, [theme]);
+
 	const selectSection = (section: SettingsSection) => {
 		setActiveSection(section);
 		setMessage('');
@@ -289,7 +298,7 @@ export default function Settings() {
 			const response = await fetch('/api/settings', {
 				method: 'PATCH',
 				headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
-				body: JSON.stringify({ displayName, timeZone }),
+				body: JSON.stringify({ displayName, timeZone, timeFormat, theme }),
 			});
 			if (!response.ok) throw new Error('Could not save general settings.');
 			setMessage('General settings saved.');
@@ -534,7 +543,7 @@ export default function Settings() {
 			<div className="min-h-screen bg-background text-foreground antialiased">
 				<main className="settings-shell">
 					<header className="settings-header">
-					<Button variant="ghost" className="-ml-5" render={<a href="/" />}>
+						<Button variant="ghost" className="-ml-6" render={<a href="/" />}>
 							<ArrowLeft aria-hidden="true" />
 							Dashboard
 						</Button>
@@ -576,13 +585,36 @@ export default function Settings() {
 										<Label htmlFor="settings-display-name">Display name</Label>
 										<Input id="settings-display-name" value={displayName} onChange={event => setDisplayName(event.target.value)} maxLength={60} />
 									</div>
-									<div className="grid gap-2">
-										<Label htmlFor="settings-time-zone">Time zone</Label>
-										<div className="relative">
-											<Select id="settings-time-zone" value={timeZone} onChange={event => setTimeZone(event.target.value)} className="appearance-none pr-10">
-												{availableTimeZones.map(zone => <option key={zone} value={zone}>{zone}</option>)}
-											</Select>
-											<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+									<div className="settings-form-grid">
+										<div className="grid gap-2">
+											<Label htmlFor="settings-time-zone">Time zone</Label>
+											<div className="relative">
+												<Select id="settings-time-zone" value={timeZone} onChange={event => setTimeZone(event.target.value)} className="appearance-none pr-10">
+													{availableTimeZones.map(zone => <option key={zone} value={zone}>{zone}</option>)}
+												</Select>
+												<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+											</div>
+										</div>
+										<div className="grid gap-2">
+											<Label htmlFor="settings-time-format">Time format</Label>
+											<div className="relative">
+												<Select id="settings-time-format" value={timeFormat} onChange={event => setTimeFormat(event.target.value as TimeFormat)} className="appearance-none pr-10">
+													<option value="12">12 hour</option>
+													<option value="24">24 hour</option>
+												</Select>
+												<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+											</div>
+										</div>
+										<div className="grid gap-2">
+											<Label htmlFor="settings-theme">Theme</Label>
+											<div className="relative">
+												<Select id="settings-theme" value={theme} onChange={event => setTheme(event.target.value as ThemePreference)} className="appearance-none pr-10">
+													<option value="light">Light</option>
+													<option value="dark">Dark</option>
+													<option value="system">System</option>
+												</Select>
+												<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+											</div>
 										</div>
 									</div>
 									<div className="flex justify-end"><Button type="button" onClick={saveGeneral} disabled={saving}>{saving ? 'Saving…' : 'Save general settings'}</Button></div>
@@ -591,21 +623,21 @@ export default function Settings() {
 
 							{activeSection === 'github' && (
 								<section className="settings-panel rounded-lg" aria-labelledby="github-settings-heading">
-									<div className="flex items-start justify-between gap-4">
+									<div className="settings-mobile-stack flex items-start justify-between gap-4">
 										<div>
 											<h2 id="github-settings-heading" className="display-heading settings-section-title">GitHub</h2>
 											<p className="mt-1 text-sm text-muted-foreground">Choose repositories across every account your token can access.</p>
 										</div>
-										<Button variant="outline" render={<a href={TOKEN_URL} target="_blank" rel="noreferrer noopener" />}>
+										<Button className="settings-action" variant="outline" render={<a href={TOKEN_URL} target="_blank" rel="noreferrer noopener" />}>
 											Create multi-org token <ExternalLink aria-hidden="true" />
 										</Button>
 									</div>
 									<div className="grid gap-2">
 										<Label htmlFor="settings-github-token">Personal access token (classic)</Label>
-										<Input id="settings-github-token" type="password" value={token} onChange={event => setToken(event.target.value)} placeholder={settings.githubTokenConfigured ? 'Token configured — enter a new one to replace it' : 'ghp_…'} />
+										<Input id="settings-github-token" type="password" value={token} onChange={event => setToken(event.target.value)} placeholder={settings.githubTokenConfigured ? 'Token configured. Enter a new one to replace it' : 'ghp_…'} />
 										<p className="text-sm text-muted-foreground">The classic token supports multiple organizations; authorize it for SSO organizations when required. A GitHub App user token is the least-privilege option for shared deployments.</p>
 									</div>
-									<div className="grid max-w-56 gap-2">
+									<div className="grid max-w-56 gap-2 max-sm:max-w-none">
 										<Label htmlFor="settings-pr-window">Pull request history</Label>
 										<div className="relative">
 											<Select id="settings-pr-window" value={pullRequestWindowDays} onChange={event => setPullRequestWindowDays(Number(event.target.value))} className="appearance-none pr-10">
@@ -619,12 +651,12 @@ export default function Settings() {
 										</div>
 									</div>
 									<div className="grid gap-3">
-										<div className="flex items-center justify-between gap-3">
+										<div className="settings-mobile-stack flex items-center justify-between gap-3">
 											<div>
 												<h3 className="font-semibold">Repositories</h3>
 												<p className="text-sm text-muted-foreground">All selected repositories are searched for authored, review-requested, and reviewed pull requests updated in the last {pullRequestWindowDays} {pullRequestWindowDays === 1 ? 'day' : 'days'}.</p>
 											</div>
-											<Button type="button" variant="outline" onClick={() => void loadGithubRepositories(true)} disabled={loadingRepositories}>{loadingRepositories ? 'Loading…' : 'Refresh'}</Button>
+											<Button type="button" className="settings-action" variant="outline" onClick={() => void loadGithubRepositories(true)} disabled={loadingRepositories}>{loadingRepositories ? 'Loading…' : 'Refresh'}</Button>
 										</div>
 										{repositoryCatalog && (
 											<div className="relative">
@@ -665,7 +697,7 @@ export default function Settings() {
 											</div>
 										)}
 									</div>
-									<div className="flex justify-end">
+									<div className="settings-save-action flex justify-end">
 										<Button type="button" className="relative" onClick={saveGithub} disabled={saving} aria-busy={saving}>
 											<span className={saving ? 'invisible' : undefined}>Save GitHub settings</span>
 											{saving && <span className="absolute inset-0 flex items-center justify-center">Saving…</span>}
@@ -692,7 +724,7 @@ export default function Settings() {
 									</div>
 									{groups.length === 0 && <p className="text-muted-foreground">No shortcut groups configured.</p>}
 									{groups.map(group => (
-										<div key={group.id} className="grid gap-3">
+										<div key={group.id} className="shortcut-settings-group">
 											<h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
 											<div className="shortcut-sort-list" onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, group.id)}>
 												{group.id === newShortcutGroupId && (

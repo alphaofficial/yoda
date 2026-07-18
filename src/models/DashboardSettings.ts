@@ -4,6 +4,8 @@ export class DashboardSettings {
 	timeZone!: string;
 	shortcutLimit!: number;
 	pullRequestWindowDays!: number;
+	timeFormat!: '12' | '24';
+	theme!: 'light' | 'dark' | 'system';
 	githubToken?: string | null;
 	repositories!: string;
 	pullRequestFilters!: string;

@@ -58,7 +58,7 @@ function PullRequestRow({ item }: { item: PullRequestItem }) {
 			href={item.url}
 			target="_blank"
 			rel="noreferrer noopener"
-			className="flex items-start gap-4 px-6 py-4 no-underline"
+			className="flex items-start gap-3 px-4 py-4 no-underline sm:gap-4 sm:px-6"
 		>
 			<span className="mt-0.5 flex size-5 shrink-0 items-center justify-center">
 				<PullRequestStateIcon state={item.state} />
@@ -120,8 +120,8 @@ export default function PullRequestPanel({ pullRequests }: PullRequestPanelProps
 		<section aria-label="Pull requests" className="flex flex-col gap-4">
 			<div className="grid gap-3">
 				<h2 className="display-heading text-base leading-snug text-foreground">Pull requests from the last {pullRequests.windowDays} {pullRequests.windowDays === 1 ? 'day' : 'days'}</h2>
-				<div className="flex flex-wrap items-stretch gap-2">
-					<div className="relative min-w-56 flex-1">
+				<div className="grid grid-cols-[minmax(0,1fr)_7rem] items-stretch gap-2 sm:flex sm:flex-wrap">
+					<div className="relative min-w-0 sm:min-w-56 sm:flex-1">
 						<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
 						<Input value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} aria-label="Search pull requests and repositories" placeholder="Search pull requests or repositories" className="h-8 pl-9 text-sm" />
 					</div>
@@ -135,7 +135,7 @@ export default function PullRequestPanel({ pullRequests }: PullRequestPanelProps
 						</Select>
 						<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
 					</div>
-					<div className="relative w-44 shrink-0">
+					<div className="relative col-span-2 w-44 max-w-full shrink-0 sm:col-auto">
 						<Select aria-label="Filter pull requests by review state" value={reviewFilter} disabled={stateFilter !== 'open'} onChange={event => { setReviewFilter(event.target.value as PullRequestItem['reviewState'] | 'all'); setPage(1); }} className="h-8 appearance-none py-1 pr-9 text-sm leading-none">
 							<option value="review_required">Review required</option>
 							<option value="all">Any review state</option>

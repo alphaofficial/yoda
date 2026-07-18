@@ -4,8 +4,8 @@ import { loadDashboardConfig, validateShortcutInput } from '@/config/dashboard';
 import variables from '@/config/variables';
 import { DashboardSettings } from '@/models/DashboardSettings';
 import { DashboardShortcut } from '@/models/DashboardShortcut';
-import { ShortcutValidationError } from '@/types/dashboard';
-import type { AddShortcutInput, DashboardConfig, ShortcutConfig, ShortcutGroupConfig, ShortcutIcon } from '@/types/dashboard';
+import { DashboardConfigError, ShortcutValidationError } from '@/types/dashboard';
+import type { AddShortcutInput, DashboardConfig, ShortcutConfig, ShortcutGroupConfig, ShortcutIcon, ThemePreference, TimeFormat } from '@/types/dashboard';
 
 function slugId(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || randomUUID();
@@ -40,6 +40,8 @@ function toConfig(settings: DashboardSettings, shortcuts: DashboardShortcut[]): 
 	return {
 		displayName: settings.displayName,
 		timeZone: settings.timeZone,
+		timeFormat: settings.timeFormat === '24' ? '24' : '12',
+		theme: settings.theme === 'dark' || settings.theme === 'system' ? settings.theme : 'light',
 		shortcutLimit: settings.shortcutLimit ?? 8,
 		githubToken: settings.githubToken ?? null,
 		github: { repositories: parseRepositories(settings), windowDays: settings.pullRequestWindowDays ?? 7 },
@@ -60,6 +62,8 @@ export class DashboardConfigRepository {
 			id: 'default',
 			displayName: config.displayName,
 			timeZone: config.timeZone,
+			timeFormat: config.timeFormat ?? '12',
+			theme: config.theme ?? 'light',
 			shortcutLimit: config.shortcutLimit ?? 8,
 			pullRequestWindowDays: config.github.windowDays ?? 7,
 			githubToken: config.githubToken ?? null,
@@ -95,10 +99,12 @@ export class DashboardConfigRepository {
 		return toConfig(settings, shortcuts);
 	}
 
-	async updateSettings(input: { displayName?: string; timeZone?: string; shortcutLimit?: number; pullRequestWindowDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
+	async updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
 		const settings = await this.db.findOneOrFail(DashboardSettings, { id: 'default' });
 		settings.displayName = typeof input.displayName === 'string' ? input.displayName.trim() : settings.displayName;
 		settings.timeZone = typeof input.timeZone === 'string' ? input.timeZone : settings.timeZone;
+		settings.timeFormat = input.timeFormat === '12' || input.timeFormat === '24' ? input.timeFormat : settings.timeFormat;
+		settings.theme = input.theme === 'light' || input.theme === 'dark' || input.theme === 'system' ? input.theme : settings.theme;
 		settings.shortcutLimit = typeof input.shortcutLimit === 'number' && Number.isInteger(input.shortcutLimit)
 			? Math.max(1, Math.min(50, input.shortcutLimit))
 			: settings.shortcutLimit;

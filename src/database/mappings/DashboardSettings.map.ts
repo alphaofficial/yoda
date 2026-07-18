@@ -10,6 +10,8 @@ export const DashboardSettingsMapper = new EntitySchema<DashboardSettings>({
 		timeZone: { type: 'string', fieldName: 'time_zone' },
 		shortcutLimit: { type: 'number', fieldName: 'shortcut_limit', default: 8 },
 		pullRequestWindowDays: { type: 'number', fieldName: 'pull_request_window_days', default: 7 },
+		timeFormat: { type: 'string', fieldName: 'time_format', default: '12' },
+		theme: { type: 'string', default: 'light' },
 		githubToken: { type: 'string', fieldName: 'github_token', nullable: true },
 		repositories: { type: 'string', default: '[]' },
 		pullRequestFilters: { type: 'string', fieldName: 'pull_request_filters', default: '{}' },

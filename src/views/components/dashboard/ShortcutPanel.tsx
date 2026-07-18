@@ -1,44 +1,38 @@
 import { useState } from 'react';
-import { CalendarDays, Columns3, ExternalLink, Gem, GitPullRequest, Link, Search } from 'lucide-react';
+import { ExternalLink, Globe2, Search } from 'lucide-react';
 import { Card } from '@/views/components/ui/card';
 import { Input } from '@/views/components/ui/input';
-import type { DashboardResponse, ShortcutIcon, ShortcutItem } from '@/types/dashboard';
+import type { DashboardResponse, ShortcutItem } from '@/types/dashboard';
 
 interface ShortcutPanelProps {
 	shortcutGroups: DashboardResponse['shortcutGroups'];
 	limit: number;
 }
 
-const ICON_MAP: Record<ShortcutIcon, typeof CalendarDays> = {
-	calendar: CalendarDays,
-	github: GitPullRequest,
-	jira: Columns3,
-	link: Link,
-	obsidian: Gem,
-};
-
 function ShortcutCard({ item }: { item: ShortcutItem }) {
-	const IconComponent = ICON_MAP[item.icon];
 	const isObsidian = item.icon === 'obsidian';
 	const [faviconFailed, setFaviconFailed] = useState(false);
 	let faviconUrl: string | null = null;
 	try {
-		faviconUrl = `https://www.google.com/s2/favicons?domain=${new URL(item.url).hostname}&sz=64`;
+		const url = new URL(item.url);
+		faviconUrl = url.protocol === 'http:' || url.protocol === 'https:'
+			? `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`
+			: null;
 	} catch {
 		faviconUrl = null;
 	}
 
 	const content = (
-		<Card className="flex flex-row items-center gap-4 px-6 py-4 shadow-sm">
+		<Card className="flex flex-row items-center gap-3 px-4 py-4 shadow-sm transition-colors group-hover:bg-muted group-focus-visible:bg-muted sm:gap-4 sm:px-6">
 			<div className="flex size-5 shrink-0 items-center justify-center">
 				{faviconUrl && !faviconFailed ? (
 					<img src={faviconUrl} alt="" className="size-5" onError={() => setFaviconFailed(true)} loading="eager" decoding="async" />
 				) : (
-					<IconComponent className="size-5 text-foreground" aria-hidden="true" />
+					<Globe2 className="size-5 text-muted-foreground" aria-hidden="true" />
 				)}
 			</div>
-			<span className="font-medium text-foreground">{item.label}</span>
-			{!isObsidian && <ExternalLink className="ml-auto size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />}
+			<span className="min-w-0 flex-1 truncate font-medium text-foreground">{item.label}</span>
+			{!isObsidian && <ExternalLink className="size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />}
 		</Card>
 	);
 
@@ -47,7 +41,7 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
 			href={item.url}
 			target={isObsidian ? '_self' : '_blank'}
 			rel={isObsidian ? 'noreferrer' : 'noreferrer noopener'}
-			className="block no-underline"
+			className="group block rounded-lg no-underline outline-none"
 		>
 			{content}
 		</a>

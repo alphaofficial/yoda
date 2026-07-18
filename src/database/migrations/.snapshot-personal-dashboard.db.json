@@ -162,6 +162,38 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "text"
+        },
+        "time_format": {
+          "name": "time_format",
+          "type": "TEXT",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'12'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "theme": {
+          "name": "theme",
+          "type": "TEXT",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'light'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
         }
       },
       "name": "dashboard_settings",

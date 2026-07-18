@@ -63,10 +63,12 @@
 
   .dashboard-main {
     grid-column: span 8 / span 8;
+    min-width: 0;
   }
 
   .dashboard-sidebar {
     grid-column: span 4 / span 4;
+    min-width: 0;
   }
 
   .cluster-split {
@@ -136,10 +138,16 @@
 
   .settings-panel {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--spacing-lg);
+    min-width: 0;
     padding: var(--spacing-lg);
     border: 1px solid var(--border);
     background: var(--card);
+  }
+
+  .settings-panel > * {
+    min-width: 0;
   }
 
   .settings-section-title {
@@ -155,6 +163,7 @@
     gap: var(--spacing-md);
   }
 
+
   .settings-message {
     margin-top: var(--spacing-md);
     color: var(--muted-foreground);
@@ -163,8 +172,16 @@
 
   .shortcut-sort-list {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--spacing-xs);
     min-height: 2rem;
+  }
+
+  .shortcut-settings-group {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--spacing-sm);
+    min-width: 0;
   }
 
   .shortcut-sort-item {
@@ -282,12 +299,44 @@
     }
   }
 
+  @media (max-width: 640px) {
+    .settings-mobile-stack {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .settings-mobile-stack > .settings-action {
+      align-self: flex-start;
+    }
+
+    .settings-save-action > * {
+      width: 100%;
+    }
+  }
+
   @media (max-width: 480px) {
+    .page-heading {
+      font-size: 28px;
+      line-height: 1.2;
+      letter-spacing: -0.5px;
+    }
+
+    .dashboard-shell,
+    .settings-shell {
+      padding: var(--spacing-md);
+    }
+
+    .settings-panel {
+      gap: var(--spacing-md);
+      padding: var(--spacing-md);
+    }
+
     .settings-nav-item {
       flex-direction: column;
       gap: 0.25rem;
       padding-inline: 0.25rem;
     }
+
   }
 }
 

@@ -25,6 +25,7 @@
     "start:dev:client": "vite build --watch",
     "start:dev:server": "nodemon",
     "start:dev:ssr": "vite build --config vite.ssr.config.mjs --watch",
+    "start:docker": "docker build -t yoda . && docker run --rm --env-file .env -p 3333:3333 yoda",
     "start:prod": "node dist/index.js",
     "test": "vitest run",
     "test:e2e": "playwright test",

@@ -158,6 +158,12 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 		throw new DashboardConfigError('timeZone is required');
 	}
 	validateTimeZone(c.timeZone);
+	if (c.timeFormat !== undefined && c.timeFormat !== '12' && c.timeFormat !== '24') {
+		throw new DashboardConfigError('timeFormat must be 12 or 24');
+	}
+	if (c.theme !== undefined && c.theme !== 'light' && c.theme !== 'dark' && c.theme !== 'system') {
+		throw new DashboardConfigError('theme must be light, dark, or system');
+	}
 
 	const github = c.github;
 	if (!github || typeof github !== 'object') {
@@ -247,6 +253,8 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 	return {
 		displayName: c.displayName.trim(),
 		timeZone: c.timeZone,
+		timeFormat: c.timeFormat === '24' ? '24' : '12',
+		theme: c.theme === 'dark' || c.theme === 'system' ? c.theme : 'light',
 		shortcutLimit: typeof c.shortcutLimit === 'number' && Number.isInteger(c.shortcutLimit) && c.shortcutLimit >= 1 && c.shortcutLimit <= 50 ? c.shortcutLimit : 8,
 		githubToken: typeof c.githubToken === 'string' ? c.githubToken : null,
 		github: {

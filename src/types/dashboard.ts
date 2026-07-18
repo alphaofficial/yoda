@@ -1,11 +1,15 @@
 export type IntegrationState = 'ok' | 'error' | 'unconfigured';
 export type ReviewState = 'approved' | 'changes_requested' | 'review_required' | 'draft';
+export type TimeFormat = '12' | '24';
+export type ThemePreference = 'light' | 'dark' | 'system';
 
 export interface DashboardResponse {
 	generatedAt: string;
 	lastRefreshAt: string | null;
 	stale: boolean;
 	timeZone: string;
+	timeFormat?: TimeFormat;
+	theme?: ThemePreference;
 	displayName: string;
 	shortcutLimit?: number;
 	githubTokenConfigured?: boolean;
@@ -87,6 +91,8 @@ export interface ShortcutConfig {
 export interface DashboardConfig {
 	displayName: string;
 	timeZone: string;
+	timeFormat?: TimeFormat;
+	theme?: ThemePreference;
 	shortcutLimit?: number;
 	githubToken?: string | null;
 	github: {

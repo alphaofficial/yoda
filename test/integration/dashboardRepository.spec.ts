@@ -42,3 +42,53 @@ describe('DashboardConfigRepository shortcut import', () => {
 		expect(db.flush).not.toHaveBeenCalled();
 	});
 });
+
+describe('DashboardConfigRepository general settings', () => {
+	it('persists the selected time format', async () => {
+		const settings = {
+			displayName: 'Albert',
+			timeZone: 'Europe/London',
+			timeFormat: '12' as '12' | '24',
+			theme: 'light' as 'light' | 'dark' | 'system',
+			shortcutLimit: 8,
+			githubToken: null,
+			repositories: '[]',
+			pullRequestWindowDays: 7,
+		};
+		const db = {
+			findOneOrFail: vi.fn().mockResolvedValue(settings),
+			find: vi.fn().mockResolvedValue([]),
+			flush: vi.fn().mockResolvedValue(undefined),
+		};
+
+		const config = await new DashboardConfigRepository(db as never).updateSettings({ timeFormat: '24' });
+
+		expect(settings.timeFormat).toBe('24');
+		expect(config.timeFormat).toBe('24');
+		expect(db.flush).toHaveBeenCalledOnce();
+	});
+
+	it('persists the selected theme', async () => {
+		const settings = {
+			displayName: 'Albert',
+			timeZone: 'Europe/London',
+			timeFormat: '12' as const,
+			theme: 'light' as 'light' | 'dark' | 'system',
+			shortcutLimit: 8,
+			githubToken: null,
+			repositories: '[]',
+			pullRequestWindowDays: 7,
+		};
+		const db = {
+			findOneOrFail: vi.fn().mockResolvedValue(settings),
+			find: vi.fn().mockResolvedValue([]),
+			flush: vi.fn().mockResolvedValue(undefined),
+		};
+
+		const config = await new DashboardConfigRepository(db as never).updateSettings({ theme: 'dark' });
+
+		expect(settings.theme).toBe('dark');
+		expect(config.theme).toBe('dark');
+		expect(db.flush).toHaveBeenCalledOnce();
+	});
+});

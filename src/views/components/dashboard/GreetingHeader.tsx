@@ -23,11 +23,21 @@ function formatDate(isoString: string, timeZone: string): string {
 	}).format(date);
 }
 
-function formatTime(date: Date): string {
+function getHour(date: Date, timeZone: string): number {
+	const hour = new Intl.DateTimeFormat('en-GB', {
+		hour: '2-digit',
+		hourCycle: 'h23',
+		timeZone,
+	}).formatToParts(date).find(part => part.type === 'hour')?.value;
+	return Number(hour ?? 0);
+}
+
+function formatTime(date: Date, timeZone: string, timeFormat: '12' | '24'): string {
 	return new Intl.DateTimeFormat('en-US', {
 		hour: 'numeric',
 		minute: '2-digit',
-		hour12: true,
+		hourCycle: timeFormat === '12' ? 'h12' : 'h23',
+		timeZone,
 	}).format(date);
 }
 
@@ -41,10 +51,11 @@ export default function GreetingHeader({ dashboard }: GreetingHeaderProps) {
 		return () => clearInterval(interval);
 	}, []);
 
-	const greeting = getGreeting(time.getHours());
+	const timeFormat = dashboard.timeFormat ?? '12';
+	const greeting = getGreeting(getHour(time, dashboard.timeZone));
 	const greetingText = `Good ${greeting}, ${dashboard.displayName}`;
 	const dateStr = formatDate(dashboard.generatedAt, dashboard.timeZone);
-	const timeStr = formatTime(time);
+	const timeStr = formatTime(time, dashboard.timeZone, timeFormat);
 
 	return (
 		<header className="mb-10 max-md:mb-10">

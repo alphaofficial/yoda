@@ -14,6 +14,8 @@ function settingsResponse(config: DashboardConfig) {
 	return {
 		displayName: config.displayName,
 		timeZone: config.timeZone,
+		timeFormat: config.timeFormat ?? '12',
+		theme: config.theme ?? 'light',
 		shortcutLimit: config.shortcutLimit ?? 8,
 		pullRequestWindowDays: config.github.windowDays ?? 7,
 		githubTokenConfigured: !!config.githubToken,
@@ -31,6 +33,7 @@ export async function settingsIndex(req: Request, res: Response) {
 		? await getCachedGitHubRepositoryCatalog(config.githubToken)
 		: undefined;
 	return res.render('Settings', {
+		_theme: config.theme ?? 'light',
 		activeSection,
 		repositoryCatalog: catalog ? {
 			...catalog,

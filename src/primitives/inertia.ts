@@ -115,7 +115,7 @@ export class InertiaExpressAdapter {
 	}
 }
 
-export async function renderHtml(page: unknown, title?: string, head?: string): Promise<string> {
+export async function renderHtml(page: unknown, title?: string, head?: string, theme: 'light' | 'dark' | 'system' = 'light'): Promise<string> {
 	const ssr = variables.DISABLE_SSR ? null : await renderOnSsr(page);
 
 	const template = fs.readFileSync(templatePath, 'utf-8');
@@ -123,8 +123,11 @@ export async function renderHtml(page: unknown, title?: string, head?: string): 
 		? ssr.body
 		: `<div id="app" data-page="${escapeHtml(JSON.stringify(page))}"></div>`;
 	const headContent = [head || '', ssr ? ssr.head.join('\n') : ''].filter(Boolean).join('\n');
+	const themeClass = theme === 'dark' ? 'dark' : '';
 
 	return template
+		.replace('{{THEME}}', theme)
+		.replace('{{THEME_CLASS}}', themeClass)
 		.replace('{{TITLE}}', escapeHtml(title || variables.APP_NAME))
 		.replace('{{HEAD}}', headContent)
 		.replace('{{APP}}', () => app)
@@ -144,6 +147,6 @@ export async function renderPage(
 		return;
 	}
 
-	const html = await renderHtml(page, documentMetadata.title, documentMetadata.head);
+	const html = await renderHtml(page, documentMetadata.title, documentMetadata.head, documentMetadata.theme);
 	return res.send(html);
 }

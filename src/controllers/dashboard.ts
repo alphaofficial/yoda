@@ -8,7 +8,7 @@ export async function dashboardIndex(req: Request, res: Response) {
 		configRepository: new DashboardConfigRepository(req.ctx.db.fork()),
 	});
 	const dashboard = await dashboardService.getSnapshot();
-	return res.render('Home', { dashboard });
+	return res.render('Home', { _theme: dashboard.theme ?? 'light', dashboard });
 }
 
 export async function createShortcut(req: Request, res: Response) {
