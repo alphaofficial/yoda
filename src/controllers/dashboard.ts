@@ -49,7 +49,6 @@ export async function importBookmarkShortcuts(req: Request, res: Response) {
 				groupId,
 				label: typeof shortcut.label === 'string' ? shortcut.label : '',
 				url: typeof shortcut.url === 'string' ? shortcut.url : '',
-				icon: 'link' as const,
 			}))
 			: [];
 		if (shortcuts.length === 0) {

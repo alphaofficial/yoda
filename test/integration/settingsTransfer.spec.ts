@@ -35,7 +35,7 @@ vi.mock('@/config/variables', () => ({
 const shortcutGroups = [{
 	id: 'shortcuts',
 	label: 'Shortcuts',
-	shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' as const }],
+	shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com' }],
 }];
 
 const config = {

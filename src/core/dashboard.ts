@@ -15,7 +15,6 @@ import type {
 	PullRequestItem,
 	ShortcutGroupConfig,
 	ShortcutGroup,
-	ShortcutIcon,
 } from '@/types/dashboard';
 
 const PULL_REQUEST_CACHE_KEY = 'github:pull-requests';
@@ -53,7 +52,6 @@ function shortcutGroupsFromSettings(settings: DashboardConfig): ShortcutGroup[] 
 			id: shortcut.id,
 			label: shortcut.label,
 			url: shortcut.url,
-			icon: shortcut.icon as ShortcutIcon,
 		})),
 	}));
 }

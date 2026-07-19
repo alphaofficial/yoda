@@ -10,7 +10,7 @@ interface ShortcutPanelProps {
 }
 
 function ShortcutCard({ item }: { item: ShortcutItem }) {
-	const isObsidian = item.icon === 'obsidian';
+	const isObsidian = item.url.startsWith('obsidian:');
 	const [faviconFailed, setFaviconFailed] = useState(false);
 	let faviconUrl: string | null = null;
 	try {

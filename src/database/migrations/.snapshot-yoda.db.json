@@ -405,22 +405,6 @@
           "enumItems": [],
           "mappedType": "text"
         },
-        "icon": {
-          "name": "icon",
-          "type": "text",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": null,
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "text"
-        },
         "position": {
           "name": "position",
           "type": "integer",

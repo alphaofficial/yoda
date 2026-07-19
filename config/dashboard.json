@@ -14,14 +14,12 @@
 				{
 					"id": "jira",
 					"label": "Jira board",
-					"url": "https://example.atlassian.net/jira/your-work",
-					"icon": "jira"
+					"url": "https://example.atlassian.net/jira/your-work"
 				},
 				{
 					"id": "obsidian",
 					"label": "Obsidian vault",
-					"url": "obsidian://open",
-					"icon": "obsidian"
+					"url": "obsidian://open"
 				}
 			]
 		}

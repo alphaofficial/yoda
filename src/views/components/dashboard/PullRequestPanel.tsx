@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useReducer, useRef } from 'react';
 import { router } from '@inertiajs/react';
 import { GitMergeIcon, GitPullRequestClosedIcon, GitPullRequestDraftIcon, GitPullRequestIcon } from '@primer/octicons-react';
-import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GitPullRequest, ListFilter, RefreshCw, UserCheck, X } from 'lucide-react';
+import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GitPullRequest, Hash, ListFilter, RefreshCw, Type, UserCheck, X } from 'lucide-react';
 import { Button } from '@/views/components/ui/button';
 import { Card, CardContent } from '@/views/components/ui/card';
 import type { DashboardResponse, PullRequestItem } from '@/types/dashboard';
@@ -31,7 +31,7 @@ type PullRequestPanelAction =
 	| { type: 'suggestionsClosed' }
 	| { type: 'activeSuggestionChanged'; index: number }
 	| { type: 'filterSelected'; inputValue: string }
-	| { type: 'filterEditStarted'; filterId: string; suggestionLeft: number }
+	| { type: 'filterEditStarted'; filterId: string; suggestionLeft: number; inputValue: string }
 	| { type: 'operatorSelected' }
 	| { type: 'operatorRemoved'; filterId?: string }
 	| { type: 'suggestionApplied'; suggestion: FilterSuggestion }
@@ -50,7 +50,7 @@ function pullRequestPanelReducer(state: PullRequestPanelState, action: PullReque
 				suggestionsOpen: action.showSuggestions,
 				suggestionMode: 'token',
 				activeSuggestion: 0,
-				editingFilterId: state.filters.find(filter => filter.id === state.editingFilterId)?.filter === filterForToken(currentSearchToken(action.inputValue))
+				editingFilterId: state.filters.find(filter => filter.id === state.editingFilterId)?.filter === currentFilterInput(action.inputValue)?.filter
 					? state.editingFilterId
 					: null,
 			};
@@ -65,7 +65,7 @@ function pullRequestPanelReducer(state: PullRequestPanelState, action: PullReque
 		case 'filterSelected':
 			return { ...state, inputValue: action.inputValue, suggestionsOpen: true, suggestionMode: 'token', activeSuggestion: 0, editingFilterId: null };
 		case 'filterEditStarted':
-			return { ...state, suggestionsOpen: true, suggestionMode: 'token', activeSuggestion: 0, suggestionLeft: action.suggestionLeft, editingFilterId: action.filterId };
+			return { ...state, inputValue: action.inputValue, suggestionsOpen: true, suggestionMode: 'token', activeSuggestion: 0, suggestionLeft: action.suggestionLeft, editingFilterId: action.filterId };
 		case 'operatorSelected':
 			return { ...state, pendingOperator: 'OR', suggestionsOpen: false, activeSuggestion: 0 };
 		case 'operatorRemoved':
@@ -124,7 +124,7 @@ function pullRequestPanelReducer(state: PullRequestPanelState, action: PullReque
 	}
 }
 
-type SearchFilter = 'repo' | 'status' | 'involved';
+type SearchFilter = 'repo' | 'status' | 'involved' | 'title' | 'id';
 
 interface FilterSuggestion {
 	filter: SearchFilter;
@@ -145,6 +145,8 @@ const FILTER_OPTIONS: Array<{
 	{ filter: 'status', label: 'Status', icon: GitPullRequest },
 	{ filter: 'involved', label: 'Involved', icon: UserCheck },
 	{ filter: 'repo', label: 'Repository', icon: BookOpen },
+	{ filter: 'title', label: 'Title', icon: Type },
+	{ filter: 'id', label: 'ID', icon: Hash },
 ];
 
 const STATUS_SUGGESTIONS: FilterSuggestion[] = [
@@ -168,6 +170,7 @@ const DEFAULT_FILTERS: AppliedFilter[] = [
 function labelForFilter(filter: SearchFilter, value: string): string | null {
 	if (filter === 'status') return STATUS_SUGGESTIONS.find(suggestion => suggestion.value === value)?.label ?? null;
 	if (filter === 'involved') return INVOLVED_SUGGESTIONS.find(suggestion => suggestion.value === value)?.label ?? null;
+	if (filter === 'id') return /^[1-9]\d*$/.test(value) && Number.isSafeInteger(Number(value)) ? `#${value}` : null;
 	return value.trim().length > 0 && value.length <= 200 ? value : null;
 }
 
@@ -182,7 +185,7 @@ function initialPullRequestPanelState(persistedFilterState: string | null): Pull
 				for (const value of parsed.filters) {
 					if (!value || typeof value !== 'object') throw new Error('Invalid filter');
 					const candidate = value as { filter?: unknown; value?: unknown; operator?: unknown };
-					if ((candidate.filter !== 'repo' && candidate.filter !== 'status' && candidate.filter !== 'involved') || typeof candidate.value !== 'string') throw new Error('Invalid filter');
+					if ((candidate.filter !== 'repo' && candidate.filter !== 'status' && candidate.filter !== 'involved' && candidate.filter !== 'title' && candidate.filter !== 'id') || typeof candidate.value !== 'string') throw new Error('Invalid filter');
 					const label = labelForFilter(candidate.filter, candidate.value);
 					if (!label) throw new Error('Invalid filter');
 					restored.push({
@@ -221,7 +224,24 @@ function currentSearchToken(query: string): string {
 
 function filterForToken(token: string): SearchFilter | null {
 	const filter = token.slice(0, token.indexOf(':'));
-	return filter === 'repo' || filter === 'status' || filter === 'involved' ? filter : null;
+	return filter === 'repo' || filter === 'status' || filter === 'involved' || filter === 'title' || filter === 'id' ? filter : null;
+}
+
+interface CurrentFilterInput {
+	filter: SearchFilter;
+	start: number;
+	value: string;
+}
+
+function currentFilterInput(query: string): CurrentFilterInput | null {
+	const matches = query.matchAll(/(?:^|\s)(repo|status|involved|title|id):/g);
+	let current: CurrentFilterInput | null = null;
+	for (const match of matches) {
+		const filter = match[1] as SearchFilter;
+		const start = (match.index ?? 0) + match[0].length - filter.length - 1;
+		current = { filter, start, value: query.slice(start + filter.length + 1) };
+	}
+	return current;
 }
 
 function beginFilter(inputValue: string, filter: SearchFilter): string {
@@ -235,14 +255,16 @@ function replaceCurrentTokenWithFilter(inputValue: string, filter: SearchFilter)
 }
 
 function inputWithoutCurrentFilter(inputValue: string): string {
-	const token = currentSearchToken(inputValue);
-	if (!filterForToken(token)) return inputValue;
-	return inputValue.slice(0, inputValue.length - token.length).trimEnd();
+	const filterInput = currentFilterInput(inputValue);
+	if (!filterInput) return inputValue;
+	return inputValue.slice(0, filterInput.start).trimEnd();
 }
 
 function matchesAppliedFilter(item: PullRequestItem, filter: AppliedFilter): boolean {
 	if (filter.filter === 'status') return item.state === filter.value;
 	if (filter.filter === 'involved') return item.involved === (filter.value === 'true');
+	if (filter.filter === 'title') return fuzzyMatch(item.title, filter.value);
+	if (filter.filter === 'id') return item.number === Number(filter.value);
 
 	const repositoryName = item.repository.toLowerCase();
 	const repository = filter.value.toLowerCase();
@@ -361,8 +383,9 @@ export default function PullRequestPanel({ pullRequests, persistedFilterState }:
 		return matchesAppliedFilters(item, filters) && matchesQuery;
 	});
 	const searchToken = currentSearchToken(inputValue);
+	const activeFilterInput = currentFilterInput(inputValue);
 	const editingFilter = filters.find(filter => filter.id === editingFilterId);
-	const searchTokenFilter = editingFilter?.filter ?? filterForToken(searchToken);
+	const searchTokenFilter = editingFilter?.filter ?? activeFilterInput?.filter ?? filterForToken(searchToken);
 	const propertySuggestions = useMemo(() => {
 		if (suggestionMode !== 'token' || searchTokenFilter) return [];
 		return FILTER_OPTIONS.filter(option => fuzzyMatch(`${option.filter} ${option.label}`, searchToken));
@@ -373,12 +396,21 @@ export default function PullRequestPanel({ pullRequests, persistedFilterState }:
 			value: repository,
 			label: repository,
 		}));
-		const allSuggestions = [...STATUS_SUGGESTIONS, ...INVOLVED_SUGGESTIONS, ...repositories];
 		if (suggestionMode === 'all' || !searchTokenFilter) return [];
-		const value = editingFilter ? '' : searchToken.slice(searchToken.indexOf(':') + 1).toLowerCase();
+		const value = activeFilterInput?.filter === searchTokenFilter ? activeFilterInput.value.trim() : '';
+		if (searchTokenFilter === 'title') {
+			return value && value.length <= 200 ? [{ filter: 'title' as const, value, label: value }] : [];
+		}
+		if (searchTokenFilter === 'id') {
+			const id = value.replace(/^#/, '').replace(/^0+(?=\d)/, '');
+			return /^[1-9]\d*$/.test(id) && Number.isSafeInteger(Number(id))
+				? [{ filter: 'id' as const, value: id, label: `#${id}` }]
+				: [];
+		}
+		const allSuggestions = [...STATUS_SUGGESTIONS, ...INVOLVED_SUGGESTIONS, ...repositories];
 		return allSuggestions.filter(suggestion => suggestion.filter === searchTokenFilter
-			&& (`${suggestion.value} ${suggestion.label}`).toLowerCase().includes(value));
-	}, [editingFilter, items, searchToken, searchTokenFilter, suggestionMode]);
+			&& (`${suggestion.value} ${suggestion.label}`).toLowerCase().includes(value.toLowerCase()));
+	}, [activeFilterInput, items, searchTokenFilter, suggestionMode]);
 	const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
 	const page = Math.min(state.page, pageCount);
 	const visibleItems = filteredItems.slice((page - 1) * pageSize, page * pageSize);
@@ -451,10 +483,12 @@ export default function PullRequestPanel({ pullRequests, persistedFilterState }:
 	};
 
 	const editFilter = (filter: AppliedFilter, anchor: HTMLButtonElement) => {
+		searchInputRef.current?.focus();
 		dispatch({
 			type: 'filterEditStarted',
 			filterId: filter.id,
 			suggestionLeft: suggestionLeftForElement(anchor),
+			inputValue: filter.filter === 'title' || filter.filter === 'id' ? `${beginFilter(inputValue, filter.filter)}${filter.value}` : inputValue,
 		});
 	};
 

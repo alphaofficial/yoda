@@ -1,6 +1,6 @@
 <h1 align="center">Yoda</h1>
 
-`yoda` is a private, self-hosted dashboard for replacing your browser home page with GitHub pull request context and persistent quick links.
+`yoda` is a dev dashboard for quickly viewing PRs and accessing quicklinks in one place
 
 ## Quick start
 
@@ -14,7 +14,7 @@ npm run start:dev
 
 Open the URL configured by `APP_URL` in `.env`.
 
-The default example uses `http://localhost:3000`, while the server fallback port is `3008` when `PORT` is not set.
+The default example uses `http://localhost:3333`, while the server fallback port is `3333` when `PORT` is not set.
 
 ## Configuration
 
@@ -34,7 +34,7 @@ Development falls back to built-in local-only keys if these variables are not se
 | Variable | Default | Description |
 | --- | --- | --- |
 | `NODE_ENV` | `development` | Runtime mode: `development`, `production`, or `test`. |
-| `PORT` | `3008` | HTTP server port when not overridden by `.env`. |
+| `PORT` | `3333` | HTTP server port when not overridden by `.env`. |
 | `APP_NAME` | `The Boring Architecture` | Page title fallback. |
 | `APP_URL` | `http://localhost:3000` | Canonical app URL used by the browser and deployment docs. |
 | `SESSION_SECRET` | development fallback | Session signing key. Required in production. |
@@ -72,8 +72,7 @@ See `env.example` for mail, storage, session, and rate-limit options inherited f
         {
           "id": "jira",
           "label": "Jira board",
-          "url": "https://example.atlassian.net/jira/your-work",
-          "icon": "jira"
+          "url": "https://example.atlassian.net/jira/your-work"
         }
       ]
     }
@@ -157,7 +156,7 @@ Use Settings → Backups to choose the backup frequency and retention period, or
 
 Back up the `.env` file separately because database backups do not contain runtime secrets stored there.
 
-Quick link exports are useful for moving dashboard links between instances, but they intentionally exclude the GitHub token and runtime secrets.
+Quick link exports are useful for sharing links to other yoda instances, but they intentionally exclude the GitHub token and runtime secrets.
 
 ## Troubleshooting
 
@@ -171,13 +170,6 @@ Quick link exports are useful for moving dashboard links between instances, but 
 
 GitHub GraphQL rate limits are reported through integration health. Increase `DASHBOARD_CACHE_TTL_SECONDS`, reduce selected repositories, or wait until the reset time.
 
-### Changes do not appear immediately
-
-Pull request data is stored in the SQLite cache for `DASHBOARD_CACHE_TTL_SECONDS`. When it expires, the next dashboard request fetches fresh GitHub data before rendering. Use the dashboard refresh button to bypass the cache immediately. GitHub configuration changes prevent reuse of pull request data cached under the previous configuration; other settings and quick links are read from SQLite on every request.
-
-### Container data disappeared
-
-The included Compose file bind-mounts `./yoda.db` to `/data/yoda.db`. Run Compose from the repository directory and do not delete or replace that host file.
 
 ## Documentation
 

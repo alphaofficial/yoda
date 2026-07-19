@@ -5,7 +5,7 @@ import variables from '@/config/variables';
 import { DashboardSettings } from '@/models/DashboardSettings';
 import { DashboardShortcut } from '@/models/DashboardShortcut';
 import { ShortcutValidationError } from '@/types/dashboard';
-import type { AddShortcutInput, DashboardConfig, ShortcutConfig, ShortcutGroupConfig, ShortcutIcon, ThemePreference, TimeFormat } from '@/types/dashboard';
+import type { AddShortcutInput, DashboardConfig, ShortcutConfig, ShortcutGroupConfig, ThemePreference, TimeFormat } from '@/types/dashboard';
 
 function slugId(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || randomUUID();
@@ -32,7 +32,6 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 			id: shortcut.id,
 			label: shortcut.label,
 			url: shortcut.url,
-			icon: shortcut.icon,
 		});
 	}
 	if (groups.size === 0) groups.set('shortcuts', { id: 'shortcuts', label: 'Quick links', shortcuts: [] });
@@ -84,7 +83,6 @@ export function createDashboardRepository(db: EntityManager) {
 					groupLabel: group.label,
 					label: shortcut.label,
 					url: shortcut.url,
-					icon: shortcut.icon,
 					position: index,
 					createdAt: now,
 					updatedAt: now,
@@ -220,7 +218,6 @@ export function createDashboardRepository(db: EntityManager) {
 						|| target.groupLabel !== groupLabel
 						|| target.label !== shortcut.label
 						|| target.url !== shortcut.url
-						|| target.icon !== shortcut.icon
 						|| target.position !== position;
 					if (targetChanged) {
 						existingByName.delete(target.label.trim().toLowerCase());
@@ -228,7 +225,6 @@ export function createDashboardRepository(db: EntityManager) {
 						target.groupLabel = groupLabel;
 						target.label = shortcut.label;
 						target.url = shortcut.url;
-						target.icon = shortcut.icon;
 						target.position = position;
 						target.updatedAt = now;
 						existingByName.set(name, target);
@@ -245,7 +241,6 @@ export function createDashboardRepository(db: EntityManager) {
 					groupLabel,
 					label: shortcut.label,
 					url: shortcut.url,
-					icon: shortcut.icon,
 					position,
 					createdAt: now,
 					updatedAt: now,
@@ -294,13 +289,12 @@ export function createDashboardRepository(db: EntityManager) {
 			groupId: shortcut.groupId,
 			label: input.label ?? shortcut.label,
 			url: input.url ?? shortcut.url,
-			icon: shortcut.icon,
 		});
 		shortcut.label = validated.label;
 		shortcut.url = validated.url;
 		shortcut.updatedAt = new Date();
 		await db.flush();
-		return { id: shortcut.id, label: shortcut.label, url: shortcut.url, icon: shortcut.icon };
+		return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
 	}
 
 	async function deleteShortcut(id: string): Promise<void> {
@@ -323,9 +317,9 @@ export function createDashboardRepository(db: EntityManager) {
 		const groupLabel = existing[0]?.groupLabel ?? 'Quick links';
 		const position = validated.position ?? existing.length;
 		const now = new Date();
-		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, icon: validated.icon, position, createdAt: now, updatedAt: now });
+		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, position, createdAt: now, updatedAt: now });
 		await db.persist(shortcut).flush();
-		return { id, label: validated.label, url: validated.url, icon: validated.icon as ShortcutIcon };
+		return { id, label: validated.label, url: validated.url };
 	}
 
 	async function addShortcuts(inputs: AddShortcutInput[]): Promise<number> {
@@ -351,7 +345,6 @@ export function createDashboardRepository(db: EntityManager) {
 					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Quick links',
 					label: shortcut.label,
 					url: shortcut.url,
-					icon: shortcut.icon,
 					position,
 					createdAt: now,
 					updatedAt: now,
@@ -392,7 +385,7 @@ export function createDashboardRepository(db: EntityManager) {
 		await db.flush();
 		return shortcutIds.map(id => {
 			const shortcut = shortcutsById.get(id)!;
-			return { id: shortcut.id, label: shortcut.label, url: shortcut.url, icon: shortcut.icon };
+			return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
 		});
 	}
 

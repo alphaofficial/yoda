@@ -100,7 +100,6 @@ describe('Dashboard Routes', () => {
 						id: 'jira',
 						label: 'Jira board',
 						url: 'https://example.atlassian.net/jira/your-work',
-						icon: 'jira',
 					},
 				],
 			},
@@ -119,7 +118,6 @@ describe('Dashboard Routes', () => {
 			id: 'new-shortcut',
 			label: 'New Shortcut',
 			url: 'https://example.com',
-			icon: 'link',
 		});
 		routeMocks.getSettings.mockResolvedValue({
 			displayName: 'Test User',
@@ -181,7 +179,6 @@ describe('Dashboard Routes', () => {
 				groupId: 'shortcuts',
 				label: 'New Shortcut',
 				url: 'https://example.com',
-				icon: 'link',
 			};
 
 			const res = await request(app)
@@ -201,7 +198,7 @@ describe('Dashboard Routes', () => {
 
 			const res = await request(app)
 				.post('/settings/shortcuts')
-				.send({ groupId: 'invalid group', label: '', url: 'bad', icon: 'invalid' })
+				.send({ groupId: 'invalid group', label: '', url: 'bad' })
 				.set('Content-Type', 'application/json');
 
 			expect(res.status).toBe(303);
@@ -223,12 +220,11 @@ describe('Dashboard Routes', () => {
 				id: 'test',
 				label: 'Test',
 				url: 'https://example.com',
-				icon: 'link',
 			});
 
 			const res = await request(app)
 				.post('/settings/shortcuts')
-				.send({ groupId: 'shortcuts', label: 'Test', url: 'https://example.com', icon: 'link' })
+				.send({ groupId: 'shortcuts', label: 'Test', url: 'https://example.com' })
 				.set('Content-Type', 'application/json');
 
 			expect(res.status).toBe(303);

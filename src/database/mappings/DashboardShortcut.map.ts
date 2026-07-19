@@ -10,7 +10,6 @@ export const DashboardShortcutMapper = new EntitySchema<DashboardShortcut>({
 		groupLabel: { type: 'string', fieldName: 'group_label' },
 		label: { type: 'string' },
 		url: { type: 'string' },
-		icon: { type: 'string' },
 		position: { type: 'number' },
 		createdAt: { type: 'Date', fieldName: 'created_at', defaultRaw: 'CURRENT_TIMESTAMP' },
 		updatedAt: { type: 'Date', fieldName: 'updated_at', defaultRaw: 'CURRENT_TIMESTAMP', onUpdate: () => new Date() },

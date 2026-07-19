@@ -491,7 +491,6 @@ export default function Settings() {
 			groupId: newShortcutGroupId,
 			label: newShortcutLabel,
 			url: newShortcutUrl,
-			icon: 'link',
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {

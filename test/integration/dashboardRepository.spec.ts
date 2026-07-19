@@ -11,7 +11,6 @@ describe('DashboardRepository shortcut import', () => {
 			groupLabel: 'Shortcuts',
 			label: 'GitHub',
 			url: 'https://github.com',
-			icon: 'github' as const,
 			position: 0,
 		});
 		const unmatched = Object.assign(new DashboardShortcut(), {
@@ -20,7 +19,6 @@ describe('DashboardRepository shortcut import', () => {
 			groupLabel: 'Shortcuts',
 			label: 'Jira',
 			url: 'https://jira.example.com',
-			icon: 'jira' as const,
 			position: 1,
 		});
 		const settings = {
@@ -42,7 +40,7 @@ describe('DashboardRepository shortcut import', () => {
 		const shortcutGroups: ShortcutGroupConfig[] = [{
 			id: 'shortcuts',
 			label: 'Shortcuts',
-			shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' }],
+			shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com' }],
 		}];
 
 		const config = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
@@ -51,8 +49,8 @@ describe('DashboardRepository shortcut import', () => {
 			id: 'shortcuts',
 			label: 'Quick links',
 			shortcuts: [
-				{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' },
-				{ id: 'jira', label: 'Jira', url: 'https://jira.example.com', icon: 'jira' },
+				{ id: 'github', label: 'GitHub', url: 'https://github.com' },
+				{ id: 'jira', label: 'Jira', url: 'https://jira.example.com' },
 			],
 		}]);
 		expect(db.remove).not.toHaveBeenCalled();
@@ -62,10 +60,10 @@ describe('DashboardRepository shortcut import', () => {
 
 	it('updates by ID or name, adds new shortcuts, deduplicates, and is idempotent', async () => {
 		const stored: DashboardShortcut[] = [
-			Object.assign(new DashboardShortcut(), { id: 'github', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Old GitHub', url: 'https://old.github.com', icon: 'link' as const, position: 0 }),
-			Object.assign(new DashboardShortcut(), { id: 'calendar-local', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Calendar', url: 'https://calendar.example.com', icon: 'link' as const, position: 1 }),
-			Object.assign(new DashboardShortcut(), { id: 'keep', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Keep me', url: 'https://keep.example.com', icon: 'link' as const, position: 2 }),
-			Object.assign(new DashboardShortcut(), { id: 'calendar-duplicate', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'calendar', url: 'https://duplicate-calendar.example.com', icon: 'calendar' as const, position: 3 }),
+			Object.assign(new DashboardShortcut(), { id: 'github', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Old GitHub', url: 'https://old.github.com', position: 0 }),
+			Object.assign(new DashboardShortcut(), { id: 'calendar-local', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Calendar', url: 'https://calendar.example.com', position: 1 }),
+			Object.assign(new DashboardShortcut(), { id: 'keep', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'Keep me', url: 'https://keep.example.com', position: 2 }),
+			Object.assign(new DashboardShortcut(), { id: 'calendar-duplicate', groupId: 'shortcuts', groupLabel: 'Shortcuts', label: 'calendar', url: 'https://duplicate-calendar.example.com', position: 3 }),
 		];
 		const settings = {
 			displayName: 'Albert',
@@ -91,20 +89,20 @@ describe('DashboardRepository shortcut import', () => {
 			id: 'shortcuts',
 			label: 'Shortcuts',
 			shortcuts: [
-				{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' },
-				{ id: 'calendar-import', label: 'Calendar', url: 'https://team-calendar.example.com', icon: 'calendar' },
-				{ id: 'docs', label: 'Docs', url: 'https://docs.example.com', icon: 'link' },
-				{ id: 'docs-copy', label: 'docs', url: 'https://duplicate-docs.example.com', icon: 'link' },
+				{ id: 'github', label: 'GitHub', url: 'https://github.com' },
+				{ id: 'calendar-import', label: 'Calendar', url: 'https://team-calendar.example.com' },
+				{ id: 'docs', label: 'Docs', url: 'https://docs.example.com' },
+				{ id: 'docs-copy', label: 'docs', url: 'https://duplicate-docs.example.com' },
 			],
 		}];
 
 		const first = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
 
 		expect(first.shortcutGroups[0].shortcuts).toEqual([
-			{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' },
-			{ id: 'calendar-local', label: 'Calendar', url: 'https://team-calendar.example.com', icon: 'calendar' },
-			{ id: 'keep', label: 'Keep me', url: 'https://keep.example.com', icon: 'link' },
-			{ id: 'docs', label: 'Docs', url: 'https://docs.example.com', icon: 'link' },
+			{ id: 'github', label: 'GitHub', url: 'https://github.com' },
+			{ id: 'calendar-local', label: 'Calendar', url: 'https://team-calendar.example.com' },
+			{ id: 'keep', label: 'Keep me', url: 'https://keep.example.com' },
+			{ id: 'docs', label: 'Docs', url: 'https://docs.example.com' },
 		]);
 		expect(db.remove).toHaveBeenCalledTimes(1);
 		expect(db.persist).toHaveBeenCalledTimes(1);

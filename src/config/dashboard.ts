@@ -5,7 +5,6 @@ import type {
 	ShortcutSettingsExport,
 	ShortcutConfig,
 	ShortcutGroupConfig,
-	ShortcutIcon,
 } from '@/types/dashboard';
 import { DashboardConfigError, ShortcutValidationError } from '@/types/dashboard';
 import variables from '@/config/variables';
@@ -15,7 +14,6 @@ const DASHBOARD_CONFIG_PATH = variables.DASHBOARD_CONFIG_PATH;
 const ID_REGEX = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const LABEL_MAX_LENGTH = 60;
 const DISPLAY_NAME_MAX_LENGTH = 60;
-const VALID_ICONS: ShortcutIcon[] = ['calendar', 'github', 'jira', 'link', 'obsidian'];
 const VALID_PROTOCOLS = ['http:', 'https:', 'obsidian:'];
 
 function generateId(label: string, existingIds: Set<string>): string {
@@ -77,15 +75,6 @@ function validateLabel(label: string, fieldName = 'Label'): void {
 		throw new DashboardConfigError(
 			`${fieldName} must be 1-${LABEL_MAX_LENGTH} characters`,
 			{ label }
-		);
-	}
-}
-
-function validateIcon(icon: string): void {
-	if (!VALID_ICONS.includes(icon as ShortcutIcon)) {
-		throw new DashboardConfigError(
-			`Invalid icon`,
-			{ icon }
 		);
 	}
 }
@@ -242,11 +231,6 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 				throw new DashboardConfigError('Shortcut URL is required');
 			}
 			validateUrl(s.url);
-
-			if (typeof s.icon !== 'string') {
-				throw new DashboardConfigError('Shortcut icon is required');
-			}
-			validateIcon(s.icon);
 		}
 	}
 
@@ -261,7 +245,15 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 			repositoryScopes: repositoryScopes as string[],
 			windowDays: typeof gh.windowDays === 'number' && Number.isInteger(gh.windowDays) && gh.windowDays >= 1 && gh.windowDays <= 30 ? gh.windowDays : 7,
 		},
-		shortcutGroups: shortcutGroups as ShortcutGroupConfig[],
+		shortcutGroups: (shortcutGroups as Array<{ id: string; label: string; shortcuts: Array<{ id: string; label: string; url: string }> }>).map(group => ({
+			id: group.id,
+			label: group.label,
+			shortcuts: group.shortcuts.map(shortcut => ({
+				id: shortcut.id,
+				label: shortcut.label,
+				url: shortcut.url,
+			})),
+		})),
 	};
 }
 
@@ -343,11 +335,6 @@ export function validateShortcutInput(input: unknown): AddShortcutInput {
 	}
 	validateShortcutUrl(i.url);
 
-	if (typeof i.icon !== 'string') {
-		throw new ShortcutValidationError('icon is required', { icon: 'Required' });
-	}
-	validateIcon(i.icon);
-
 	if (i.position !== undefined && (typeof i.position !== 'number' || !Number.isInteger(i.position))) {
 		throw new ShortcutValidationError('position must be an integer', { position: 'Must be an integer' });
 	}
@@ -356,7 +343,6 @@ export function validateShortcutInput(input: unknown): AddShortcutInput {
 		groupId: i.groupId,
 		label: i.label.trim(),
 		url: i.url,
-		icon: i.icon as ShortcutIcon,
 		position: i.position as number | undefined,
 	};
 }
@@ -384,7 +370,6 @@ export async function addShortcut(
 		id,
 		label: validated.label,
 		url: validated.url,
-		icon: validated.icon,
 	};
 
 	group.shortcuts.splice(clampedPosition, 0, shortcut);

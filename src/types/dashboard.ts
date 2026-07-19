@@ -76,10 +76,7 @@ export interface ShortcutItem {
 	id: string;
 	label: string;
 	url: string;
-	icon: ShortcutIcon;
 }
-
-export type ShortcutIcon = 'calendar' | 'github' | 'jira' | 'link' | 'obsidian';
 
 export interface ShortcutGroupConfig {
 	id: string;
@@ -91,7 +88,6 @@ export interface ShortcutConfig {
 	id: string;
 	label: string;
 	url: string;
-	icon: ShortcutIcon;
 }
 
 export interface DashboardConfig {
@@ -120,7 +116,6 @@ export interface AddShortcutInput {
 	groupId: string;
 	label: string;
 	url: string;
-	icon: ShortcutIcon;
 	position?: number;
 }
 

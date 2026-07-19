@@ -14,7 +14,7 @@ interface SettingsPageProps {
 }
 
 interface PersistedFilter {
-	filter: 'status' | 'involved' | 'repo';
+	filter: 'status' | 'involved' | 'repo' | 'title' | 'id';
 	value: string;
 	operator: 'AND' | 'OR';
 }
@@ -37,12 +37,17 @@ async function clearDefaultFilters(page: Page): Promise<void> {
 	await removeFilterIfPresent(page, 'True');
 }
 
-async function chooseFilter(page: Page, property: 'Status' | 'Involved' | 'Repository', value: string): Promise<void> {
+async function chooseFilter(page: Page, property: 'Status' | 'Involved' | 'Repository' | 'Title' | 'ID', value: string): Promise<void> {
 	await page.getByRole('button', { name: 'Add pull request filter' }).click();
 	await page.getByRole('option', { name: property, exact: true }).click();
 	const input = page.getByRole('textbox', { name: 'Search and filter pull requests' });
-	const propertyName = property === 'Status' ? 'status' : property === 'Involved' ? 'involved' : 'repo';
+	const propertyName = property === 'Status' ? 'status' : property === 'Involved' ? 'involved' : property === 'Repository' ? 'repo' : property.toLowerCase();
 	await expect(input).toHaveValue(`${propertyName}:`);
+	if (property === 'Title' || property === 'ID') {
+		await input.fill(`${propertyName}:${value}`);
+		await input.press('Enter');
+		return;
+	}
 	await page.getByRole('option', { name: value, exact: true }).click();
 }
 
@@ -53,6 +58,17 @@ function statusLabel(state: DashboardResponse['pullRequests']['items'][number]['
 function repositoryMatchesScope(repository: string, scope: string): boolean {
 	if (scope.endsWith('/*')) return repository.toLowerCase().startsWith(`${scope.slice(0, -2).toLowerCase()}/`);
 	return repository.toLowerCase() === scope.toLowerCase();
+}
+
+function fuzzyMatch(value: string, query: string): boolean {
+	const haystack = value.toLowerCase();
+	let position = 0;
+	for (const character of query.toLowerCase().trim()) {
+		position = haystack.indexOf(character, position);
+		if (position < 0) return false;
+		position++;
+	}
+	return true;
 }
 
 async function applyPersistedFilters(page: Page, filters: PersistedFilter[], inputValue = ''): Promise<void> {
@@ -187,6 +203,53 @@ test.describe.serial('Docker dashboard end to end', () => {
 		await page.reload();
 		await expect(page.locator(`[data-filter="status:${item.state}"]`)).toBeVisible();
 		await expect(page.locator('[data-filter="involved:false"]')).toBeVisible();
+	});
+
+	test('fuzzy filters titles locally, supports spaces, and persists on reload', async ({ page }) => {
+		await page.context().clearCookies();
+		await page.goto('/');
+		const { dashboard } = await initialPageProps<HomePageProps>(page);
+		const item = dashboard.pullRequests.items.find(candidate => candidate.title.trim().split(/\s+/).length >= 3)
+			?? dashboard.pullRequests.items[0];
+		const query = item.title.trim().split(/\s+/).slice(0, 3).map(word => word[0]).join(' ');
+		const expectedIds = dashboard.pullRequests.items
+			.filter(candidate => fuzzyMatch(candidate.title, query))
+			.slice(0, 10)
+			.map(candidate => candidate.id);
+		await clearDefaultFilters(page);
+
+		const requests: string[] = [];
+		page.on('request', request => requests.push(request.url()));
+		await chooseFilter(page, 'Title', query);
+
+		await expect(page.locator('[data-filter^="title:"]')).toHaveAttribute('data-filter', `title:${query}`);
+		await expect(page.getByRole('textbox', { name: 'Search and filter pull requests' })).toHaveValue('');
+		expect(await visiblePullRequestIds(page)).toEqual(expectedIds);
+		expect(requests).toEqual([]);
+
+		await page.reload();
+		await expect(page.locator('[data-filter^="title:"]')).toHaveAttribute('data-filter', `title:${query}`);
+		expect(await visiblePullRequestIds(page)).toEqual(expectedIds);
+	});
+
+	test('filters by pull request number locally', async ({ page }) => {
+		await page.context().clearCookies();
+		await page.goto('/');
+		const { dashboard } = await initialPageProps<HomePageProps>(page);
+		const item = dashboard.pullRequests.items[0];
+		const expectedIds = dashboard.pullRequests.items
+			.filter(candidate => candidate.number === item.number)
+			.slice(0, 10)
+			.map(candidate => candidate.id);
+		await clearDefaultFilters(page);
+
+		const requests: string[] = [];
+		page.on('request', request => requests.push(request.url()));
+		await chooseFilter(page, 'ID', String(item.number));
+
+		await expect(page.locator('[data-filter^="id:"]')).toHaveAttribute('data-filter', `id:${item.number}`);
+		expect(await visiblePullRequestIds(page)).toEqual(expectedIds);
+		expect(requests).toEqual([]);
 	});
 
 	test('opens the filter menu from the input and anchors it at the input point', async ({ page }) => {

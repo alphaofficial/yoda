@@ -59,13 +59,11 @@ describe('dashboard config validation', () => {
 								id: 'jira',
 								label: 'Jira board',
 								url: 'https://example.atlassian.net/jira/your-work',
-								icon: 'jira',
 							},
 							{
 								id: 'obsidian',
 								label: 'Obsidian vault',
 								url: 'obsidian://open',
-								icon: 'obsidian',
 							},
 						],
 					},
@@ -77,31 +75,19 @@ describe('dashboard config validation', () => {
 			expect(result.github.windowDays).toBe(14);
 		});
 
-		it('accepts all valid icon types', () => {
-			const icons: Array<'calendar' | 'github' | 'jira' | 'link' | 'obsidian'> = [
-				'calendar',
-				'github',
-				'jira',
-				'link',
-				'obsidian',
-			];
-			for (const icon of icons) {
-				const config = {
-					displayName: 'Test',
-					timeZone: 'UTC',
-					github: { repositoryScopes: [] },
-					shortcutGroups: [
-						{
-							id: 'group',
-							label: 'Group',
-							shortcuts: [
-								{ id: 'shortcut', label: 'Shortcut', url: 'https://example.com', icon },
-							],
-						},
-					],
-				};
-				expect(() => validateDashboardConfig(config)).not.toThrow();
-			}
+		it('strips legacy icon properties', () => {
+			const result = validateDashboardConfig({
+				displayName: 'Test',
+				timeZone: 'UTC',
+				github: { repositoryScopes: [] },
+				shortcutGroups: [{
+					id: 'group',
+					label: 'Group',
+					shortcuts: [{ id: 'shortcut', label: 'Shortcut', url: 'https://example.com', icon: 'jira' }],
+				}],
+			});
+
+			expect(result.shortcutGroups[0].shortcuts[0]).toEqual({ id: 'shortcut', label: 'Shortcut', url: 'https://example.com' });
 		});
 
 		it('accepts max length display name (60 chars)', () => {
@@ -124,7 +110,7 @@ describe('dashboard config validation', () => {
 						id: 'group',
 						label: 'a'.repeat(60),
 						shortcuts: [
-							{ id: 's', label: 'a'.repeat(60), url: 'https://example.com', icon: 'link' },
+							{ id: 's', label: 'a'.repeat(60), url: 'https://example.com' },
 						],
 					},
 				],
@@ -143,7 +129,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'http://example.com', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'http://example.com' }],
 					},
 				],
 			};
@@ -159,7 +145,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'obsidian://open', icon: 'obsidian' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'obsidian://open' }],
 					},
 				],
 			};
@@ -177,7 +163,7 @@ describe('dashboard config validation', () => {
 						{
 							id,
 							label: 'Group',
-							shortcuts: [{ id, label: 'Shortcut', url: 'https://example.com', icon: 'link' }],
+							shortcuts: [{ id, label: 'Shortcut', url: 'https://example.com' }],
 						},
 					],
 				};
@@ -360,7 +346,7 @@ describe('dashboard config validation', () => {
 						id: 'group',
 						label: 'Group',
 						shortcuts: [
-							{ id: 'Invalid', label: 'Shortcut', url: 'https://example.com', icon: 'link' },
+							{ id: 'Invalid', label: 'Shortcut', url: 'https://example.com' },
 						],
 					},
 				],
@@ -378,8 +364,8 @@ describe('dashboard config validation', () => {
 						id: 'group',
 						label: 'Group',
 						shortcuts: [
-							{ id: 'shortcut', label: 'Shortcut 1', url: 'https://example1.com', icon: 'link' },
-							{ id: 'shortcut', label: 'Shortcut 2', url: 'https://example2.com', icon: 'link' },
+							{ id: 'shortcut', label: 'Shortcut 1', url: 'https://example1.com' },
+							{ id: 'shortcut', label: 'Shortcut 2', url: 'https://example2.com' },
 						],
 					},
 				],
@@ -387,23 +373,6 @@ describe('dashboard config validation', () => {
 			expect(() => validateDashboardConfig(config)).toThrow('Duplicate shortcut ID');
 		});
 
-		it('rejects invalid icon', () => {
-			const config = {
-				displayName: 'Test',
-				timeZone: 'UTC',
-				github: { repositoryScopes: [] },
-				shortcutGroups: [
-					{
-						id: 'group',
-						label: 'Group',
-						shortcuts: [
-							{ id: 'shortcut', label: 'Shortcut', url: 'https://example.com', icon: 'invalid' },
-						],
-					},
-				],
-			};
-			expect(() => validateDashboardConfig(config)).toThrow('Invalid icon');
-		});
 	});
 
 	describe('URL validation', () => {
@@ -416,7 +385,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'javascript:alert(1)', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'javascript:alert(1)' }],
 					},
 				],
 			};
@@ -432,7 +401,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'data:text/html,<script>alert(1)</script>', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'data:text/html,<script>alert(1)</script>' }],
 					},
 				],
 			};
@@ -448,7 +417,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'file:///etc/passwd', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'file:///etc/passwd' }],
 					},
 				],
 			};
@@ -464,7 +433,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'https://user:pass@example.com', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'https://user:pass@example.com' }],
 					},
 				],
 			};
@@ -480,7 +449,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'https://user@example.com', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'https://user@example.com' }],
 					},
 				],
 			};
@@ -496,7 +465,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'https://:password@example.com', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'https://:password@example.com' }],
 					},
 				],
 			};
@@ -512,7 +481,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'https:///', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'https:///' }],
 					},
 				],
 			};
@@ -528,7 +497,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: 'S', url: 'custom://open', icon: 'link' }],
+						shortcuts: [{ id: 's', label: 'S', url: 'custom://open' }],
 					},
 				],
 			};
@@ -578,7 +547,7 @@ describe('dashboard config validation', () => {
 					{
 						id: 'g',
 						label: 'G',
-						shortcuts: [{ id: 's', label: '', url: 'https://example.com', icon: 'link' }],
+						shortcuts: [{ id: 's', label: '', url: 'https://example.com' }],
 					},
 				],
 			};
@@ -610,7 +579,7 @@ describe('shortcut persistence', () => {
 			{
 				id: 'group1',
 				label: 'Group 1',
-				shortcuts: [{ id: 'existing', label: 'Existing', url: 'https://example.com', icon: 'link' }],
+				shortcuts: [{ id: 'existing', label: 'Existing', url: 'https://example.com' }],
 			},
 			{
 				id: 'group2',
@@ -653,8 +622,8 @@ describe('shortcut persistence', () => {
 			const exported = {
 				version: 1,
 				shortcutGroups: [
-					{ id: 'one', label: 'One', shortcuts: [{ id: 'duplicate', label: 'First', url: 'https://one.example.com', icon: 'link' }] },
-					{ id: 'two', label: 'Two', shortcuts: [{ id: 'duplicate', label: 'Second', url: 'https://two.example.com', icon: 'link' }] },
+					{ id: 'one', label: 'One', shortcuts: [{ id: 'duplicate', label: 'First', url: 'https://one.example.com' }] },
+					{ id: 'two', label: 'Two', shortcuts: [{ id: 'duplicate', label: 'Second', url: 'https://two.example.com' }] },
 				],
 			};
 
@@ -666,14 +635,13 @@ describe('shortcut persistence', () => {
 		it('appends shortcut to group when no position provided', async () => {
 			const configPath = await writeConfig(validConfig);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'New Shortcut', url: 'https://new.example.com', icon: 'link' },
+				{ groupId: 'group1', label: 'New Shortcut', url: 'https://new.example.com' },
 				configPath
 			);
 
 			expect(shortcut.id).toMatch(/^new-shortcut-[a-z0-9]{6}$/);
 			expect(shortcut.label).toBe('New Shortcut');
 			expect(shortcut.url).toBe('https://new.example.com');
-			expect(shortcut.icon).toBe('link');
 
 			const saved = JSON.parse(await fs.readFile(configPath, 'utf-8'));
 			expect(saved.shortcutGroups[0].shortcuts).toHaveLength(2);
@@ -683,7 +651,7 @@ describe('shortcut persistence', () => {
 		it('inserts shortcut at beginning when position is 0', async () => {
 			const configPath = await writeConfig(validConfig);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'First Shortcut', url: 'https://first.example.com', icon: 'link', position: 0 },
+				{ groupId: 'group1', label: 'First Shortcut', url: 'https://first.example.com', position: 0 },
 				configPath
 			);
 
@@ -700,16 +668,16 @@ describe('shortcut persistence', () => {
 						id: 'group1',
 						label: 'Group 1',
 						shortcuts: [
-							{ id: 's1', label: 'S1', url: 'https://s1.com', icon: 'link' },
-							{ id: 's2', label: 'S2', url: 'https://s2.com', icon: 'link' },
-							{ id: 's3', label: 'S3', url: 'https://s3.com', icon: 'link' },
+							{ id: 's1', label: 'S1', url: 'https://s1.com' },
+							{ id: 's2', label: 'S2', url: 'https://s2.com' },
+							{ id: 's3', label: 'S3', url: 'https://s3.com' },
 						],
 					},
 				],
 			};
 			const configPath = await writeConfig(configWith3);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'Middle', url: 'https://middle.com', icon: 'link', position: 1 },
+				{ groupId: 'group1', label: 'Middle', url: 'https://middle.com', position: 1 },
 				configPath
 			);
 
@@ -721,7 +689,7 @@ describe('shortcut persistence', () => {
 		it('clamps position beyond length to end', async () => {
 			const configPath = await writeConfig(validConfig);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'End', url: 'https://end.com', icon: 'link', position: 999 },
+				{ groupId: 'group1', label: 'End', url: 'https://end.com', position: 999 },
 				configPath
 			);
 
@@ -733,7 +701,7 @@ describe('shortcut persistence', () => {
 		it('clamps negative position to beginning', async () => {
 			const configPath = await writeConfig(validConfig);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'Start', url: 'https://start.com', icon: 'link', position: -5 },
+				{ groupId: 'group1', label: 'Start', url: 'https://start.com', position: -5 },
 				configPath
 			);
 
@@ -744,7 +712,7 @@ describe('shortcut persistence', () => {
 		it('adds to empty group', async () => {
 			const configPath = await writeConfig(validConfig);
 			const shortcut = await addShortcut(
-				{ groupId: 'group2', label: 'First in Group 2', url: 'https://first.example.com', icon: 'link' },
+				{ groupId: 'group2', label: 'First in Group 2', url: 'https://first.example.com' },
 				configPath
 			);
 
@@ -761,15 +729,15 @@ describe('shortcut persistence', () => {
 						id: 'group1',
 						label: 'Group 1',
 						shortcuts: [
-							{ id: 'jira', label: 'Jira', url: 'https://jira.com', icon: 'jira' },
-							{ id: 'jira-ab12cd', label: 'Jira copy', url: 'https://jira2.com', icon: 'jira' },
+							{ id: 'jira', label: 'Jira', url: 'https://jira.com' },
+							{ id: 'jira-ab12cd', label: 'Jira copy', url: 'https://jira2.com' },
 						],
 					},
 				],
 			};
 			const configPath = await writeConfig(configWithExisting);
 			const shortcut = await addShortcut(
-				{ groupId: 'group1', label: 'Jira board', url: 'https://jira3.com', icon: 'jira' },
+				{ groupId: 'group1', label: 'Jira board', url: 'https://jira3.com' },
 				configPath
 			);
 
@@ -782,7 +750,7 @@ describe('shortcut persistence', () => {
 			const configPath = await writeConfig(validConfig);
 			await expect(
 				addShortcut(
-					{ groupId: 'nonexistent', label: 'Test', url: 'https://test.com', icon: 'link' },
+					{ groupId: 'nonexistent', label: 'Test', url: 'https://test.com' },
 					configPath
 				)
 			).rejects.toThrow(ShortcutValidationError);
@@ -792,7 +760,7 @@ describe('shortcut persistence', () => {
 			const configPath = await writeConfig(validConfig);
 
 			await addShortcut(
-				{ groupId: 'group1', label: 'Atomic Test', url: 'https://atomic.com', icon: 'link' },
+				{ groupId: 'group1', label: 'Atomic Test', url: 'https://atomic.com' },
 				configPath
 			);
 
@@ -811,14 +779,12 @@ describe('shortcut persistence', () => {
 				groupId: 'group1',
 				label: 'Test Shortcut',
 				url: 'https://test.com',
-				icon: 'link',
 				position: 1,
 			};
 			const result = validateShortcutInput(input);
 			expect(result.groupId).toBe('group1');
 			expect(result.label).toBe('Test Shortcut');
 			expect(result.url).toBe('https://test.com');
-			expect(result.icon).toBe('link');
 			expect(result.position).toBe(1);
 		});
 
@@ -827,7 +793,6 @@ describe('shortcut persistence', () => {
 				groupId: 'group1',
 				label: 'Test',
 				url: 'https://test.com',
-				icon: 'github',
 			};
 			const result = validateShortcutInput(input);
 			expect(result.position).toBeUndefined();
@@ -838,7 +803,6 @@ describe('shortcut persistence', () => {
 				groupId: 'group1',
 				label: '  Test  ',
 				url: 'https://test.com',
-				icon: 'link',
 			};
 			const result = validateShortcutInput(input);
 			expect(result.label).toBe('Test');
@@ -849,7 +813,6 @@ describe('shortcut persistence', () => {
 				validateShortcutInput({
 					label: 'Test',
 					url: 'https://test.com',
-					icon: 'link',
 				})
 			).toThrow(ShortcutValidationError);
 		});
@@ -859,7 +822,6 @@ describe('shortcut persistence', () => {
 				validateShortcutInput({
 					groupId: 'group1',
 					url: 'https://test.com',
-					icon: 'link',
 				})
 			).toThrow(ShortcutValidationError);
 		});
@@ -870,7 +832,6 @@ describe('shortcut persistence', () => {
 					groupId: 'group1',
 					label: 'Test',
 					url: 'javascript:alert(1)',
-					icon: 'link',
 				})
 			).toThrow(ShortcutValidationError);
 		});
@@ -881,7 +842,6 @@ describe('shortcut persistence', () => {
 					groupId: 'group1',
 					label: 'Test',
 					url: 'https://test.com',
-					icon: 'link',
 					position: 1.5,
 				})
 			).toThrow(ShortcutValidationError);
