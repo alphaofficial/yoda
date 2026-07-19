@@ -80,7 +80,7 @@ const variables = {
 	DASHBOARD_CONFIG_PATH: env('DASHBOARD_CONFIG_PATH', 'config/dashboard.json')!,
 	DASHBOARD_CACHE_TTL_SECONDS: (() => {
 		const raw = envValue('DASHBOARD_CACHE_TTL_SECONDS');
-		const value = raw ? Number(raw) : 180;
+		const value = raw ? Number(raw) : 900;
 		if (Number.isNaN(value) || !Number.isInteger(value) || value < 5 || value > 3600) {
 			throw new Error('DASHBOARD_CACHE_TTL_SECONDS must be an integer from 5 to 3600');
 		}
@@ -88,7 +88,7 @@ const variables = {
 	})(),
 	GITHUB_REPOSITORY_CACHE_TTL_SECONDS: (() => {
 		const raw = envValue('GITHUB_REPOSITORY_CACHE_TTL_SECONDS');
-		const value = raw ? Number(raw) : 900;
+		const value = raw ? Number(raw) : 86_400;
 		if (Number.isNaN(value) || !Number.isInteger(value) || value < 60 || value > 86400) {
 			throw new Error('GITHUB_REPOSITORY_CACHE_TTL_SECONDS must be an integer from 60 to 86400');
 		}

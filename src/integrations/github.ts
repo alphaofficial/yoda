@@ -1,12 +1,12 @@
 import { createHttpClient, IntegrationRequestError } from '@/integrations/http';
-import type { GitHubRepository, GitHubRepositoryCatalog, PullRequestItem } from '@/types/dashboard';
+import type { GitHubPullRequestContext, GitHubRepository, GitHubRepositoryCatalog, PullRequestItem } from '@/types/dashboard';
 
 interface GitHubClientOptions {
 	token: string;
 	repositoryScopes: string[];
 	windowDays: number;
 	requestedAt: Date;
-	repositoryCatalog: GitHubRepositoryCatalog;
+	pullRequestContext: GitHubPullRequestContext;
 }
 
 interface RawRepository {
@@ -21,6 +21,11 @@ interface RawRepository {
 interface RawTeam {
 	slug: string;
 	organization: { login: string };
+}
+
+interface RawOwner {
+	login: string;
+	type: 'User' | 'Organization';
 }
 
 interface RawPullRequest {
@@ -95,19 +100,48 @@ export async function discoverGitHubRepositories(token: string): Promise<GitHubR
 	};
 }
 
+export async function discoverGitHubPullRequestContext(token: string, repositoryScopes: string[]): Promise<GitHubPullRequestContext> {
+	const client = createHttpClient(GITHUB_BASE_URL);
+	const headers = { ...GITHUB_HEADERS, Authorization: `Bearer ${token}` };
+	const wildcardOwners = Array.from(new Set(repositoryScopes
+		.filter(scope => scope.endsWith('/*'))
+		.map(scope => scope.slice(0, -2).toLowerCase())));
+
+	const teamsPromise = (async () => {
+		const teams: string[] = [];
+		for (let page = 1; ; page++) {
+			const result = await client.get<RawTeam[]>(`/user/teams?per_page=100&page=${page}`, { headers });
+			teams.push(...result.map(team => `${team.organization.login}/${team.slug}`));
+			if (result.length < 100) return Array.from(new Set(teams)).sort((a, b) => a.localeCompare(b));
+		}
+	})();
+	const [viewer, teams, owners] = await Promise.all([
+		client.get<{ login: string }>('/user', { headers }),
+		teamsPromise,
+		Promise.all(wildcardOwners.map(owner => client.get<RawOwner>(`/users/${encodeURIComponent(owner)}`, { headers }))),
+	]);
+
+	return {
+		viewerLogin: viewer.login,
+		teams,
+		ownerTypes: Object.fromEntries(owners.map(owner => [owner.login.toLowerCase(), owner.type])),
+	};
+}
+
 export function createGitHubClient(options: GitHubClientOptions) {
-	const { token, repositoryScopes, windowDays, requestedAt, repositoryCatalog } = options;
+	const { token, repositoryScopes, windowDays, requestedAt, pullRequestContext } = options;
 	const client = createHttpClient(GITHUB_BASE_URL);
 
 	async function fetchPullRequests(): Promise<{ items: PullRequestItem[]; unconfigured: boolean }> {
 		if (!token) return { items: [], unconfigured: true };
 
-		const scopes = repositoryScopes.length > 0 ? repositoryScopes : repositoryCatalog.defaultScopes;
-		const searchQualifiers = buildRepositorySearchQualifiers(scopes, repositoryCatalog.repositories);
+		const scopes = repositoryScopes.length > 0 ? repositoryScopes : [`${pullRequestContext.viewerLogin}/*`];
+		const searchQualifiers = buildRepositorySearchQualifiers(scopes, pullRequestContext);
 		if (searchQualifiers.length === 0) return { items: [], unconfigured: false };
 
 		const boundedWindowDays = Math.max(1, Math.min(30, Math.trunc(windowDays)));
 		const cutoff = new Date(requestedAt.getTime() - boundedWindowDays * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+		const requestedDate = requestedAt.toISOString().slice(0, 10);
 		const items = new Map<string, PullRequestItem>();
 		const involvedIds = new Set<string>();
 
@@ -140,12 +174,12 @@ export function createGitHubClient(options: GitHubClientOptions) {
 			return pullRequests;
 		}
 
-		const results = await Promise.all(groupSearchQualifiers(searchQualifiers, cutoff, repositoryCatalog).map(async repositoryGroup => {
-			const [allPullRequests, ...involvementResults] = await Promise.all([
-				searchPullRequests(buildSearchQuery(cutoff, repositoryGroup)),
-				...buildInvolvementSearchQueries(cutoff, repositoryGroup, repositoryCatalog).map(searchPullRequests),
+		const results = await Promise.all(groupSearchQualifiers(searchQualifiers, cutoff, pullRequestContext).map(async repositoryGroup => {
+			const [allPullRequestResults, involvementResults] = await Promise.all([
+				Promise.all(buildPullRequestSearchQueries(cutoff, requestedDate, repositoryGroup).map(searchPullRequests)),
+				Promise.all(buildInvolvementSearchQueries(cutoff, repositoryGroup, pullRequestContext).map(searchPullRequests)),
 			]);
-			return [allPullRequests, involvementResults.flat()] as const;
+			return [allPullRequestResults.flat(), involvementResults.flat()] as const;
 		}));
 		for (const [allPullRequests, involvedPullRequests] of results) {
 			for (const pullRequest of allPullRequests) items.set(pullRequest.id, normalizePullRequest(pullRequest));
@@ -163,18 +197,17 @@ export function createGitHubClient(options: GitHubClientOptions) {
 	return { fetchPullRequests };
 }
 
-function buildRepositorySearchQualifiers(scopes: string[], repositories: GitHubRepository[]): string[] {
+function buildRepositorySearchQualifiers(scopes: string[], context: GitHubPullRequestContext): string[] {
 	const qualifiers = new Set<string>();
 	for (const scope of scopes) {
 		if (scope.endsWith('/*')) {
-			const owner = scope.slice(0, -2).toLowerCase();
-			const ownedRepository = repositories.find(repository => repository.owner.toLowerCase() === owner);
-			if (ownedRepository) {
-				qualifiers.add(`${ownedRepository.ownerType === 'Organization' ? 'org' : 'user'}:${ownedRepository.owner}`);
-			}
+			const owner = scope.slice(0, -2);
+			const ownerType = owner.toLowerCase() === context.viewerLogin.toLowerCase()
+				? 'User'
+				: context.ownerTypes[owner.toLowerCase()];
+			if (ownerType) qualifiers.add(`${ownerType === 'Organization' ? 'org' : 'user'}:${owner}`);
 		} else {
-			const repository = repositories.find(candidate => candidate.fullName.toLowerCase() === scope.toLowerCase());
-			if (repository) qualifiers.add(`repo:${repository.fullName}`);
+			qualifiers.add(`repo:${scope}`);
 		}
 	}
 	return Array.from(qualifiers).sort((a, b) => a.localeCompare(b));
@@ -184,14 +217,31 @@ function buildSearchQuery(cutoff: string, qualifiers: string[]): string {
 	return `is:pr updated:>=${cutoff} ${qualifiers.join(' ')}`;
 }
 
-function buildInvolvementSearchQueries(cutoff: string, qualifiers: string[], repositoryCatalog: GitHubRepositoryCatalog): string[] {
-	const viewer = repositoryCatalog.viewerLogin;
+function buildPullRequestSearchQueries(cutoff: string, requestedDate: string, qualifiers: string[]): string[] {
+	const queries: string[] = [];
+	const finalDate = new Date(`${requestedDate}T00:00:00.000Z`);
+	let rangeStart = new Date(`${cutoff}T00:00:00.000Z`);
+
+	while (rangeStart <= finalDate) {
+		const rangeEnd = new Date(Math.min(rangeStart.getTime() + 24 * 60 * 60 * 1000, finalDate.getTime()));
+		const start = rangeStart.toISOString().slice(0, 10);
+		const end = rangeEnd.toISOString().slice(0, 10);
+		const updatedRange = start === end ? start : `${start}..${end}`;
+		queries.push(`is:pr updated:${updatedRange} ${qualifiers.join(' ')}`);
+		rangeStart = new Date(rangeEnd.getTime() + 24 * 60 * 60 * 1000);
+	}
+
+	return queries;
+}
+
+function buildInvolvementSearchQueries(cutoff: string, qualifiers: string[], context: GitHubPullRequestContext): string[] {
+	const viewer = context.viewerLogin;
 	const baseQuery = buildSearchQuery(cutoff, qualifiers);
 	return [
 		`${baseQuery} involves:${viewer}`,
 		`${baseQuery} review-requested:${viewer}`,
 		`${baseQuery} reviewed-by:${viewer}`,
-		...repositoryCatalog.teams.map(team => `${baseQuery} team-review-requested:${team}`),
+		...context.teams.map(team => `${baseQuery} team-review-requested:${team}`),
 	];
 }
 
@@ -242,7 +292,7 @@ function normalizePullRequest(pullRequest: RawPullRequest): PullRequestItem {
 	};
 }
 
-function groupSearchQualifiers(qualifiers: string[], cutoff: string, repositoryCatalog: GitHubRepositoryCatalog): string[][] {
+function groupSearchQualifiers(qualifiers: string[], cutoff: string, context: GitHubPullRequestContext): string[][] {
 	const ownerGroups = qualifiers
 		.filter(qualifier => !qualifier.startsWith('repo:'))
 		.map(qualifier => [qualifier]);
@@ -250,7 +300,7 @@ function groupSearchQualifiers(qualifiers: string[], cutoff: string, repositoryC
 	let current: string[] = [];
 	for (const qualifier of qualifiers.filter(candidate => candidate.startsWith('repo:'))) {
 		const candidate = [...current, qualifier];
-		if (current.length > 0 && Math.max(...buildInvolvementSearchQueries(cutoff, candidate, repositoryCatalog).map(query => query.length)) > 240) {
+		if (current.length > 0 && Math.max(...buildInvolvementSearchQueries(cutoff, candidate, context).map(query => query.length)) > 240) {
 			repositoryChunks.push(current);
 			current = [qualifier];
 		} else {

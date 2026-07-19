@@ -3,9 +3,87 @@
   "tables": [
     {
       "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": true,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "value": {
+          "name": "value",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "integer",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        }
+      },
+      "name": "cache_entries",
+      "indexes": [
+        {
+          "keyName": "cache_entries_expires_at_index",
+          "columnNames": [
+            "expires_at"
+          ],
+          "composite": false,
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "keyName": "primary",
+          "columnNames": [
+            "key"
+          ],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
+        }
+      ],
+      "checks": [],
+      "foreignKeys": {},
+      "nativeEnums": {}
+    },
+    {
+      "columns": {
         "id": {
           "name": "id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -21,7 +99,7 @@
         },
         "display_name": {
           "name": "display_name",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -37,7 +115,7 @@
         },
         "time_zone": {
           "name": "time_zone",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -51,9 +129,105 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "shortcut_limit": {
+          "name": "shortcut_limit",
+          "type": "integer",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "8",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "pull_request_window_days": {
+          "name": "pull_request_window_days",
+          "type": "integer",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "7",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "backup_interval_hours": {
+          "name": "backup_interval_hours",
+          "type": "integer",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "24",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "backup_retention_days": {
+          "name": "backup_retention_days",
+          "type": "integer",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "30",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "time_format": {
+          "name": "time_format",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'12'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "theme": {
+          "name": "theme",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'light'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
         "github_token": {
           "name": "github_token",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -69,7 +243,7 @@
         },
         "repositories": {
           "name": "repositories",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -79,6 +253,22 @@
           "precision": null,
           "scale": null,
           "default": "'[]'",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
+        "pull_request_filters": {
+          "name": "pull_request_filters",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "'{}'",
           "comment": null,
           "enumItems": [],
           "mappedType": "text"
@@ -114,130 +304,19 @@
           "comment": null,
           "enumItems": [],
           "mappedType": "datetime"
-        },
-        "shortcut_limit": {
-          "name": "shortcut_limit",
-          "type": "INTEGER",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "8",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "integer"
-        },
-        "pull_request_window_days": {
-          "name": "pull_request_window_days",
-          "type": "INTEGER",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "7",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "integer"
-        },
-        "backup_interval_hours": {
-          "name": "backup_interval_hours",
-          "type": "INTEGER",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "24",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "integer"
-        },
-        "backup_retention_days": {
-          "name": "backup_retention_days",
-          "type": "INTEGER",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "30",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "integer"
-        },
-        "pull_request_filters": {
-          "name": "pull_request_filters",
-          "type": "TEXT",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "'{}'",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "text"
-        },
-        "time_format": {
-          "name": "time_format",
-          "type": "TEXT",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "'12'",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "text"
-        },
-        "theme": {
-          "name": "theme",
-          "type": "TEXT",
-          "unsigned": false,
-          "autoincrement": false,
-          "primary": false,
-          "nullable": false,
-          "unique": false,
-          "length": null,
-          "precision": null,
-          "scale": null,
-          "default": "'light'",
-          "comment": null,
-          "enumItems": [],
-          "mappedType": "text"
         }
       },
       "name": "dashboard_settings",
       "indexes": [
         {
+          "keyName": "primary",
           "columnNames": [
             "id"
           ],
-          "keyName": "primary",
+          "composite": false,
           "constraint": true,
-          "unique": true,
-          "primary": true
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
@@ -248,7 +327,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -264,7 +343,7 @@
         },
         "group_id": {
           "name": "group_id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -280,7 +359,7 @@
         },
         "group_label": {
           "name": "group_label",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -296,7 +375,7 @@
         },
         "label": {
           "name": "label",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -312,7 +391,7 @@
         },
         "url": {
           "name": "url",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -328,7 +407,7 @@
         },
         "icon": {
           "name": "icon",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -344,7 +423,7 @@
         },
         "position": {
           "name": "position",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -394,24 +473,25 @@
       "name": "dashboard_shortcuts",
       "indexes": [
         {
-          "columnNames": [
-            "id"
-          ],
-          "keyName": "primary",
-          "constraint": true,
-          "unique": true,
-          "primary": true
-        },
-        {
+          "keyName": "dashboard_shortcuts_group_position_index",
           "columnNames": [
             "group_id",
             "position"
           ],
-          "keyName": "dashboard_shortcuts_group_position_index",
-          "unique": false,
+          "composite": true,
           "constraint": false,
           "primary": false,
-          "composite": true
+          "unique": false
+        },
+        {
+          "keyName": "primary",
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
@@ -422,7 +502,7 @@
       "columns": {
         "email": {
           "name": "email",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -438,7 +518,7 @@
         },
         "token_hash": {
           "name": "token_hash",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -472,13 +552,14 @@
       "name": "password_resets",
       "indexes": [
         {
+          "keyName": "primary",
           "columnNames": [
             "email"
           ],
-          "keyName": "primary",
+          "composite": false,
           "constraint": true,
-          "unique": true,
-          "primary": true
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
@@ -489,7 +570,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -505,7 +586,7 @@
         },
         "name": {
           "name": "name",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -521,7 +602,7 @@
         },
         "payload": {
           "name": "payload",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -537,7 +618,7 @@
         },
         "status": {
           "name": "status",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -553,7 +634,7 @@
         },
         "attempts": {
           "name": "attempts",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -569,7 +650,7 @@
         },
         "available_at": {
           "name": "available_at",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -585,7 +666,7 @@
         },
         "locked_at": {
           "name": "locked_at",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -601,7 +682,7 @@
         },
         "locked_by": {
           "name": "locked_by",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -617,7 +698,7 @@
         },
         "last_error": {
           "name": "last_error",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -633,7 +714,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -649,7 +730,7 @@
         },
         "updated_at": {
           "name": "updated_at",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -667,36 +748,37 @@
       "name": "queue_jobs",
       "indexes": [
         {
-          "columnNames": [
-            "id"
-          ],
-          "keyName": "primary",
-          "constraint": true,
-          "unique": true,
-          "primary": true
-        },
-        {
-          "columnNames": [
-            "status",
-            "locked_at"
-          ],
-          "keyName": "queue_jobs_locked_index",
-          "unique": false,
-          "constraint": false,
-          "primary": false,
-          "composite": true
-        },
-        {
+          "keyName": "queue_jobs_pending_index",
           "columnNames": [
             "status",
             "available_at",
             "created_at"
           ],
-          "keyName": "queue_jobs_pending_index",
-          "unique": false,
+          "composite": true,
           "constraint": false,
           "primary": false,
-          "composite": true
+          "unique": false
+        },
+        {
+          "keyName": "queue_jobs_locked_index",
+          "columnNames": [
+            "status",
+            "locked_at"
+          ],
+          "composite": true,
+          "constraint": false,
+          "primary": false,
+          "unique": false
+        },
+        {
+          "keyName": "primary",
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
@@ -707,7 +789,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -723,7 +805,7 @@
         },
         "secret_hash": {
           "name": "secret_hash",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -739,7 +821,7 @@
         },
         "user_id": {
           "name": "user_id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -755,13 +837,13 @@
         },
         "ip_address": {
           "name": "ip_address",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": true,
           "unique": false,
-          "length": null,
+          "length": 45,
           "precision": null,
           "scale": null,
           "default": null,
@@ -771,7 +853,7 @@
         },
         "user_agent": {
           "name": "user_agent",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -787,7 +869,7 @@
         },
         "payload": {
           "name": "payload",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -803,7 +885,7 @@
         },
         "last_activity": {
           "name": "last_activity",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -819,7 +901,7 @@
         },
         "created_at": {
           "name": "created_at",
-          "type": "INTEGER",
+          "type": "integer",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -838,30 +920,33 @@
       "indexes": [
         {
           "columnNames": [
-            "id"
+            "user_id"
           ],
-          "keyName": "primary",
-          "constraint": true,
-          "unique": true,
-          "primary": true
+          "composite": false,
+          "keyName": "sessions_user_id_index",
+          "constraint": false,
+          "primary": false,
+          "unique": false
         },
         {
           "columnNames": [
             "last_activity"
           ],
+          "composite": false,
           "keyName": "sessions_last_activity_index",
-          "unique": false,
           "constraint": false,
-          "primary": false
+          "primary": false,
+          "unique": false
         },
         {
+          "keyName": "primary",
           "columnNames": [
-            "user_id"
+            "id"
           ],
-          "keyName": "sessions_user_id_index",
-          "unique": false,
-          "constraint": false,
-          "primary": false
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],
@@ -872,7 +957,7 @@
       "columns": {
         "id": {
           "name": "id",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": true,
@@ -888,7 +973,7 @@
         },
         "name": {
           "name": "name",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -904,12 +989,12 @@
         },
         "email": {
           "name": "email",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
           "nullable": false,
-          "unique": true,
+          "unique": false,
           "length": null,
           "precision": null,
           "scale": null,
@@ -920,7 +1005,7 @@
         },
         "password": {
           "name": "password",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -952,7 +1037,7 @@
         },
         "remember_token": {
           "name": "remember_token",
-          "type": "TEXT",
+          "type": "text",
           "unsigned": false,
           "autoincrement": false,
           "primary": false,
@@ -1003,21 +1088,23 @@
       "indexes": [
         {
           "columnNames": [
-            "id"
-          ],
-          "keyName": "primary",
-          "constraint": true,
-          "unique": true,
-          "primary": true
-        },
-        {
-          "columnNames": [
             "email"
           ],
+          "composite": false,
           "keyName": "users_email_unique",
-          "unique": true,
           "constraint": true,
-          "primary": false
+          "primary": false,
+          "unique": true
+        },
+        {
+          "keyName": "primary",
+          "columnNames": [
+            "id"
+          ],
+          "composite": false,
+          "constraint": true,
+          "primary": true,
+          "unique": true
         }
       ],
       "checks": [],

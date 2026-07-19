@@ -5,14 +5,13 @@ import { Mailer } from '@/primitives/mail';
 import { Queue } from '@/primitives/queue';
 import { Scheduler } from '@/primitives/scheduler';
 import { Storage } from '@/primitives/storage';
-import { createMemoryCacheDriver } from '@/runtime/drivers/cache/memory';
+import { createSqliteCacheDriver } from '@/runtime/drivers/cache/sqlite';
 import { createInMemoryBusDriver } from '@/runtime/drivers/bus/inMemory';
 import { createLogMailDriver } from '@/runtime/drivers/mail/log';
 import { createSqliteQueueDriver } from '@/runtime/drivers/queue/sqlite';
 import { createNodeCronSchedulerDriver } from '@/runtime/drivers/scheduler/nodeCron';
 import { createLocalDiskDriver } from '@/runtime/drivers/storage/localDisk';
-import { MikroORM } from '@mikro-orm/core';
-import { AppContext, createApplicationCtx } from '@/runtime/context';
+import { AppContext } from '@/runtime/context';
 
 
 type Primitive = "bus" | "cache" | "mail" | "queue" | "scheduler" | "storage";
@@ -23,7 +22,7 @@ type Primitive = "bus" | "cache" | "mail" | "queue" | "scheduler" | "storage";
 export function bootstrapPrimitives(ctx: AppContext, primitives?: Primitive[] ): void {
 	if (!primitives || primitives.length === 0) {
 		Bus.configure(createInMemoryBusDriver(), ctx);
-		Cache.configure(createMemoryCacheDriver());
+		Cache.configure(createSqliteCacheDriver(ctx.db));
 		Storage.configure(createLocalDiskDriver(variables.STORAGE_PATH, variables.APP_URL));
 		Mailer.configure(createLogMailDriver());
 		Queue.configure(createSqliteQueueDriver(ctx.db), ctx);
@@ -35,7 +34,7 @@ export function bootstrapPrimitives(ctx: AppContext, primitives?: Primitive[] ):
 	}
 
 	if (primitives?.includes("cache")) {
-		Cache.configure(createMemoryCacheDriver());
+		Cache.configure(createSqliteCacheDriver(ctx.db));
 	}
 
 	if (primitives?.includes("mail")) {

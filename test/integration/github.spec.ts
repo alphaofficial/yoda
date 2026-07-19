@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createGitHubClient, discoverGitHubRepositories } from '@/integrations/github';
+import { createGitHubClient, discoverGitHubPullRequestContext, discoverGitHubRepositories } from '@/integrations/github';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -15,20 +15,11 @@ function repository(id: number, fullName: string, ownerType: 'User' | 'Organizat
 	return { id, name, full_name: fullName, private: true, archived: false, owner: { login: owner, type: ownerType } };
 }
 
-function repositoryCatalog(repositories: ReturnType<typeof repository>[], viewerLogin = 'albert', teams: string[] = []) {
+function pullRequestContext(viewerLogin = 'albert', teams: string[] = [], ownerTypes: Record<string, 'User' | 'Organization'> = {}) {
 	return {
 		viewerLogin,
-		repositories: repositories.map(item => ({
-			id: item.id,
-			name: item.name,
-			fullName: item.full_name,
-			owner: item.owner.login,
-			ownerType: item.owner.type,
-			private: item.private,
-			archived: item.archived,
-		})),
-		defaultScopes: [`${viewerLogin}/*`],
 		teams,
+		ownerTypes,
 	};
 }
 
@@ -74,6 +65,39 @@ describe('GitHub repository discovery', () => {
 		expect(String(mockTransport.mock.calls[1][0])).toContain('per_page=100&page=1');
 		expect(String(mockTransport.mock.calls[2][0])).toContain('per_page=100&page=2');
 	});
+
+	it('loads lightweight dashboard context without enumerating repositories', async () => {
+		const mockTransport = vi.fn(async (input: string | URL | Request) => {
+			const url = String(input);
+			if (url.endsWith('/user')) return jsonResponse({ login: 'albert' });
+			if (url.includes('/user/teams')) return jsonResponse([{ slug: 'developers', organization: { login: 'acme' } }]);
+			throw new Error(`Unexpected GitHub request: ${url}`);
+		});
+		vi.stubGlobal('fetch', mockTransport);
+
+		const result = await discoverGitHubPullRequestContext('token', ['acme/dashboard', 'acme/api']);
+
+		expect(result).toEqual({ viewerLogin: 'albert', teams: ['acme/developers'], ownerTypes: {} });
+		expect(mockTransport).toHaveBeenCalledTimes(2);
+		expect(mockTransport.mock.calls.every(([input]) => !String(input).includes('/user/repos'))).toBe(true);
+	});
+
+	it('resolves only owners used by wildcard dashboard scopes', async () => {
+		const mockTransport = vi.fn(async (input: string | URL | Request) => {
+			const url = String(input);
+			if (url.endsWith('/user')) return jsonResponse({ login: 'albert' });
+			if (url.includes('/user/teams')) return jsonResponse([]);
+			if (url.endsWith('/users/acme')) return jsonResponse({ login: 'acme', type: 'Organization' });
+			throw new Error(`Unexpected GitHub request: ${url}`);
+		});
+		vi.stubGlobal('fetch', mockTransport);
+
+		const result = await discoverGitHubPullRequestContext('token', ['acme/*', 'albert/personal']);
+
+		expect(result.ownerTypes).toEqual({ acme: 'Organization' });
+		expect(mockTransport).toHaveBeenCalledTimes(3);
+		expect(mockTransport.mock.calls.every(([input]) => !String(input).includes('/user/repos'))).toBe(true);
+	});
 });
 
 describe('GitHub pull request selection', () => {
@@ -85,7 +109,7 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: [],
 			windowDays: 7,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([]),
+			pullRequestContext: pullRequestContext(),
 		}).fetchPullRequests();
 		expect(result).toEqual({ items: [], unconfigured: true });
 		expect(mockTransport).not.toHaveBeenCalled();
@@ -111,15 +135,18 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: [],
 			windowDays: 7,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([
-				repository(1, 'albert/personal', 'User'),
-				repository(2, 'acme/dashboard'),
-			]),
+			pullRequestContext: pullRequestContext(),
 		}).fetchPullRequests();
 
-		expect(searchQueries).toHaveLength(4);
+		expect(searchQueries).toHaveLength(7);
 		expect(searchQueries.every(query => query.includes('user:albert'))).toBe(true);
 		expect(searchQueries.every(query => !query.includes('org:acme'))).toBe(true);
+		expect(searchQueries.filter(query => !isInvolvementQuery(query))).toEqual([
+			'is:pr updated:2026-07-11..2026-07-12 user:albert',
+			'is:pr updated:2026-07-13..2026-07-14 user:albert',
+			'is:pr updated:2026-07-15..2026-07-16 user:albert',
+			'is:pr updated:2026-07-17..2026-07-18 user:albert',
+		]);
 		expect(searchQueries.filter(query => query.includes('involves:albert'))).toHaveLength(1);
 		expect(searchQueries.filter(query => query.includes('review-requested:albert'))).toHaveLength(1);
 		expect(searchQueries.filter(query => query.includes('reviewed-by:albert'))).toHaveLength(1);
@@ -146,17 +173,23 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: ['acme/*'],
 			windowDays: 14,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([
-				repository(1, 'acme/api'),
-				repository(2, 'acme/web'),
-				repository(3, 'other/ignored'),
-			]),
+			pullRequestContext: pullRequestContext('albert', [], { acme: 'Organization' }),
 		}).fetchPullRequests();
 
-		expect(searchQueries).toHaveLength(4);
+		expect(searchQueries).toHaveLength(11);
 		expect(searchQueries.every(query => query.includes('org:acme'))).toBe(true);
 		expect(searchQueries.every(query => !query.includes('other'))).toBe(true);
-		expect(searchQueries.every(query => query.includes('updated:>=2026-07-04'))).toBe(true);
+		expect(searchQueries.filter(query => !isInvolvementQuery(query))).toEqual([
+			'is:pr updated:2026-07-04..2026-07-05 org:acme',
+			'is:pr updated:2026-07-06..2026-07-07 org:acme',
+			'is:pr updated:2026-07-08..2026-07-09 org:acme',
+			'is:pr updated:2026-07-10..2026-07-11 org:acme',
+			'is:pr updated:2026-07-12..2026-07-13 org:acme',
+			'is:pr updated:2026-07-14..2026-07-15 org:acme',
+			'is:pr updated:2026-07-16..2026-07-17 org:acme',
+			'is:pr updated:2026-07-18 org:acme',
+		]);
+		expect(searchQueries.filter(isInvolvementQuery).every(query => query.includes('updated:>=2026-07-04'))).toBe(true);
 		expect(searchQueries.every(query => !query.includes('author:'))).toBe(true);
 		expect(searchQueries.filter(query => query.includes('involves:albert'))).toHaveLength(1);
 		expect(searchQueries.filter(query => query.includes('reviewed-by:albert'))).toHaveLength(1);
@@ -184,15 +217,12 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: ['acme/*', 'albert/personal'],
 			windowDays: 7,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([
-				repository(1, 'acme/dashboard'),
-				repository(2, 'albert/personal', 'User'),
-			]),
+			pullRequestContext: pullRequestContext('albert', [], { acme: 'Organization' }),
 		}).fetchPullRequests();
 
-		expect(searchQueries).toHaveLength(8);
-		expect(searchQueries.filter(query => query.includes('org:acme'))).toHaveLength(4);
-		expect(searchQueries.filter(query => query.includes('repo:albert/personal'))).toHaveLength(4);
+		expect(searchQueries).toHaveLength(14);
+		expect(searchQueries.filter(query => query.includes('org:acme'))).toHaveLength(7);
+		expect(searchQueries.filter(query => query.includes('repo:albert/personal'))).toHaveLength(7);
 		expect(searchQueries.every(query => !(query.includes('org:acme') && query.includes('repo:albert/personal')))).toBe(true);
 	});
 
@@ -227,12 +257,12 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: ['acme/dashboard'],
 			windowDays: 7,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([repository(1, 'acme/dashboard')]),
+			pullRequestContext: pullRequestContext(),
 		}).fetchPullRequests();
 
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map(item => item.state)).toEqual(['merged', 'draft']);
-		expect(graphPage).toBe(2);
+		expect(graphPage).toBe(5);
 	});
 
 	it('marks pull requests that GitHub reports as involving the authenticated user', async () => {
@@ -276,7 +306,7 @@ describe('GitHub pull request selection', () => {
 			repositoryScopes: ['acme/dashboard'],
 			windowDays: 7,
 			requestedAt: new Date('2026-07-18T12:00:00Z'),
-			repositoryCatalog: repositoryCatalog([repository(1, 'acme/dashboard')], 'albert', ['acme/developers']),
+			pullRequestContext: pullRequestContext('albert', ['acme/developers']),
 		}).fetchPullRequests();
 
 		expect(searchQueries.filter(query => query.includes('team-review-requested:acme/developers'))).toHaveLength(1);

@@ -60,6 +60,12 @@ export interface GitHubRepositoryCatalog {
 	teams: string[];
 }
 
+export interface GitHubPullRequestContext {
+	viewerLogin: string;
+	teams: string[];
+	ownerTypes: Record<string, 'User' | 'Organization'>;
+}
+
 export interface ShortcutGroup {
 	id: string;
 	label: string;

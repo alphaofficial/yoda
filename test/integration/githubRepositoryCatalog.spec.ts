@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/integrations/github', () => ({
 	discoverGitHubRepositories: mocks.discoverGitHubRepositories,
+	discoverGitHubPullRequestContext: vi.fn(),
 	createGitHubClient: vi.fn(),
 }));
 
@@ -19,7 +20,7 @@ vi.mock('@/repositories/DashboardRepository', () => ({
 }));
 
 vi.mock('@/config/variables', () => ({
-	default: { GITHUB_REPOSITORY_CACHE_TTL_SECONDS: 900 },
+	default: { GITHUB_REPOSITORY_CACHE_TTL_SECONDS: 86_400 },
 }));
 
 import { dashboard } from '@/core/dashboard';

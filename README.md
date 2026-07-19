@@ -42,8 +42,8 @@ Development falls back to built-in local-only keys if these variables are not se
 | `DB_PATH` | `yoda.db` | SQLite database path. Use a mounted path in Docker. |
 | `BACKUP_PATH` | `backups` | Directory used for scheduled and manual database backups. |
 | `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Seed file path for first-time dashboard setup. |
-| `DASHBOARD_CACHE_TTL_SECONDS` | `180` | Dashboard cache TTL. Must be 5–3600 seconds. |
-| `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL. Must be 60–86400 seconds. |
+| `DASHBOARD_CACHE_TTL_SECONDS` | `900` | Pull request cache TTL. Must be 5–3600 seconds. |
+| `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `86400` | GitHub repository catalog cache TTL. Must be 60–86400 seconds. |
 | `DASHBOARD_REQUEST_TIMEOUT_MS` | `5000` | GitHub request timeout. Must be 1000–30000 ms. |
 | `DASHBOARD_RETRY_COUNT` | `2` | Retry count for failed dashboard requests. Must be 0–4. |
 | `DISABLE_SSR` | `false` | Set to `true` to serve a client-only shell. |
@@ -173,7 +173,7 @@ GitHub GraphQL rate limits are reported through integration health. Increase `DA
 
 ### Changes do not appear immediately
 
-Dashboard data is cached by `DASHBOARD_CACHE_TTL_SECONDS`. Settings and quick link mutations invalidate the cached snapshot, while stale external data refreshes in the background.
+Pull request data is stored in the SQLite cache for `DASHBOARD_CACHE_TTL_SECONDS`. When it expires, the next dashboard request fetches fresh GitHub data before rendering. Use the dashboard refresh button to bypass the cache immediately. GitHub configuration changes prevent reuse of pull request data cached under the previous configuration; other settings and quick links are read from SQLite on every request.
 
 ### Container data disappeared
 

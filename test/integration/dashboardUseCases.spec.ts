@@ -6,7 +6,7 @@ import type { DashboardConfig, PullRequestItem } from '@/types/dashboard';
 
 const mocks = vi.hoisted(() => ({
 	getSettings: vi.fn(),
-	discoverGitHubRepositories: vi.fn(),
+	discoverGitHubPullRequestContext: vi.fn(),
 	fetchPullRequests: vi.fn(),
 }));
 
@@ -16,6 +16,7 @@ vi.mock('@/config/variables', () => ({
 		DASHBOARD_CACHE_TTL_SECONDS: 60,
 		DASHBOARD_REQUEST_TIMEOUT_MS: 5000,
 		DASHBOARD_RETRY_COUNT: 2,
+		GITHUB_REPOSITORY_CACHE_TTL_SECONDS: 86_400,
 	},
 }));
 
@@ -25,7 +26,8 @@ vi.mock('@/repositories/DashboardRepository', () => ({
 
 vi.mock('@/integrations/github', () => ({
 	createGitHubClient: vi.fn(() => ({ fetchPullRequests: mocks.fetchPullRequests })),
-	discoverGitHubRepositories: mocks.discoverGitHubRepositories,
+	discoverGitHubPullRequestContext: mocks.discoverGitHubPullRequestContext,
+	discoverGitHubRepositories: vi.fn(),
 }));
 
 function createMockCacheDriver() {
@@ -96,11 +98,10 @@ describe('dashboard use cases', () => {
 		clearPrimitiveRuntime('cache');
 		Cache.configure(mockCache.driver);
 		mocks.getSettings.mockResolvedValue(config());
-		mocks.discoverGitHubRepositories.mockResolvedValue({
+		mocks.discoverGitHubPullRequestContext.mockResolvedValue({
 			viewerLogin: 'owner',
-			repositories: [],
-			defaultScopes: ['owner/*'],
 			teams: [],
+			ownerTypes: {},
 		});
 		mocks.fetchPullRequests.mockResolvedValue({ items: [pullRequest], unconfigured: false });
 	});

@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
 import type { EntityManager } from '@mikro-orm/core';
 import variables from '@/config/variables';
-import { createGitHubClient, discoverGitHubRepositories } from '@/integrations/github';
+import { createGitHubClient, discoverGitHubPullRequestContext, discoverGitHubRepositories } from '@/integrations/github';
 import { PinoLogger } from '@/logger/pinoLogger';
 import { Cache } from '@/primitives/cache';
 import { createDashboardRepository } from '@/repositories/DashboardRepository';
@@ -9,6 +9,7 @@ import type {
 	AddShortcutInput,
 	DashboardConfig,
 	DashboardResponse,
+	GitHubPullRequestContext,
 	GitHubRepositoryCatalog,
 	IntegrationHealth,
 	PullRequestItem,
@@ -18,6 +19,7 @@ import type {
 } from '@/types/dashboard';
 
 const PULL_REQUEST_CACHE_KEY = 'github:pull-requests';
+const PULL_REQUEST_CONTEXT_CACHE_KEY = 'github:pull-request-context';
 const REPOSITORY_CATALOG_CACHE_KEY = 'github:repository-catalog';
 
 interface CachedPullRequests {
@@ -30,6 +32,11 @@ interface CachedPullRequests {
 interface CachedRepositoryCatalog {
 	tokenFingerprint: string;
 	catalog: GitHubRepositoryCatalog;
+}
+
+interface CachedPullRequestContext {
+	configurationHash: string;
+	context: GitHubPullRequestContext;
 }
 
 function calculatePrCounts(items: PullRequestItem[]): { open: number; draft: number; merged: number; closed: number } {
@@ -65,6 +72,28 @@ function tokenFingerprint(token: string): string {
 	return createHash('sha256').update(token).digest('hex');
 }
 
+function pullRequestContextHash(token: string, repositoryScopes: string[]): string {
+	return createHash('sha256')
+		.update(JSON.stringify({
+			token,
+			wildcardScopes: repositoryScopes.filter(scope => scope.endsWith('/*')).sort(),
+		}))
+		.digest('hex');
+}
+
+async function getGitHubPullRequestContext(token: string, repositoryScopes: string[]): Promise<GitHubPullRequestContext> {
+	const hash = pullRequestContextHash(token, repositoryScopes);
+	const cached = await Cache.get<CachedPullRequestContext>(PULL_REQUEST_CONTEXT_CACHE_KEY);
+	if (cached?.configurationHash === hash) return cached.context;
+
+	const context = await discoverGitHubPullRequestContext(token, repositoryScopes);
+	await Cache.set(PULL_REQUEST_CONTEXT_CACHE_KEY, {
+		configurationHash: hash,
+		context,
+	} satisfies CachedPullRequestContext, variables.GITHUB_REPOSITORY_CACHE_TTL_SECONDS);
+	return context;
+}
+
 async function getGitHubRepositoryCatalog(token: string, refresh: boolean): Promise<GitHubRepositoryCatalog> {
 	const fingerprint = tokenFingerprint(token);
 	if (!refresh) {
@@ -83,13 +112,13 @@ async function getGitHubRepositoryCatalog(token: string, refresh: boolean): Prom
 async function fetchPullRequests(settings: DashboardConfig, currentDateTime: Date): Promise<CachedPullRequests> {
 	const hash = configurationHash(settings);
 	try {
-		const repositoryCatalog = await getGitHubRepositoryCatalog(settings.githubToken!, false);
+		const pullRequestContext = await getGitHubPullRequestContext(settings.githubToken!, settings.github.repositoryScopes);
 		const result = await createGitHubClient({
 			token: settings.githubToken!,
 			repositoryScopes: settings.github.repositoryScopes,
 			windowDays: settings.github.windowDays ?? 7,
 			requestedAt: currentDateTime,
-			repositoryCatalog,
+			pullRequestContext,
 		}).fetchPullRequests();
 		return {
 			configurationHash: hash,
