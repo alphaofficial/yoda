@@ -94,6 +94,8 @@ export interface DashboardConfig {
 	timeFormat?: TimeFormat;
 	theme?: ThemePreference;
 	shortcutLimit?: number;
+	backupIntervalHours?: number;
+	backupRetentionDays?: number;
 	githubToken?: string | null;
 	github: {
 		repositoryScopes: string[];

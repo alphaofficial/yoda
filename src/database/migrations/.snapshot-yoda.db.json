@@ -147,6 +147,38 @@
           "enumItems": [],
           "mappedType": "integer"
         },
+        "backup_interval_hours": {
+          "name": "backup_interval_hours",
+          "type": "INTEGER",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "24",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
+        "backup_retention_days": {
+          "name": "backup_retention_days",
+          "type": "INTEGER",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": false,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": "30",
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "integer"
+        },
         "pull_request_filters": {
           "name": "pull_request_filters",
           "type": "TEXT",

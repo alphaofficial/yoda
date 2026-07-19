@@ -1,0 +1,28 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: yoda:latest
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PORT: 3336
+      DB_PATH: /data/yoda.db
+      BACKUP_PATH: /backups
+    ports:
+      - "3336:3336"
+    volumes:
+      - ./yoda.db:/data/yoda.db
+      - ./backups:/backups
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3336/readyz').then(response => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 30s

@@ -20,6 +20,8 @@ RUN npm run build
 COPY start.sh /usr/src/app/start.sh
 RUN chmod +x /usr/src/app/start.sh
 
-EXPOSE 3333
+ENV PORT=3336
+
+EXPOSE 3336
 
 CMD ["./start.sh"]

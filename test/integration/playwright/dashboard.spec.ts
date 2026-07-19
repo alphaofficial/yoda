@@ -111,6 +111,35 @@ async function searchGitHubPullRequestIds(token: string, searchQuery: string): P
 }
 
 test.describe.serial('Docker dashboard end to end', () => {
+	test('loads the body font on the initial visit', async ({ page }) => {
+		const fontResponse = page.waitForResponse(response => response.url().endsWith('/fonts/cal-sans-ui-variable.woff2'));
+		await page.goto('/settings?section=backups');
+		expect((await fontResponse).ok()).toBe(true);
+		await expect.poll(() => page.evaluate(() => document.fonts.check('16px "Cal Sans UI"'))).toBe(true);
+		expect(await page.locator('body').evaluate(element => getComputedStyle(element).fontFamily)).toContain('Cal Sans UI');
+	});
+
+	test('persists backup settings and creates a backup on demand', async ({ page }) => {
+		await page.goto('/settings?section=backups');
+		await page.getByLabel('Backup frequency').selectOption('6');
+		await page.getByLabel('Retention (days)').fill('14');
+		await Promise.all([
+			page.waitForResponse(response => response.url().includes('/settings?section=backups') && response.request().method() === 'PATCH'),
+			page.getByRole('button', { name: 'Save settings' }).click(),
+		]);
+
+		await page.reload();
+		await expect(page.getByLabel('Backup frequency')).toHaveValue('6');
+		await expect(page.getByLabel('Retention (days)')).toHaveValue('14');
+		await Promise.all([
+			page.waitForResponse(response => response.url().endsWith('/settings/backups') && response.request().method() === 'POST'),
+			page.getByRole('button', { name: 'Back up now' }).click(),
+		]);
+		await page.reload();
+		await expect(page.getByText('1 backup', { exact: true })).toBeVisible();
+		await expect(page.getByText(/^Latest /)).toBeVisible();
+	});
+
 	test('loads real GitHub data with the saved database token and reuses the PR cache', async ({ page }) => {
 		const startedAt = Date.now();
 		await page.goto('/');
@@ -135,6 +164,8 @@ test.describe.serial('Docker dashboard end to end', () => {
 	test('fills clicked filters into the search, filters actual PRs, autocompletes typing, and persists on reload', async ({ page }) => {
 		await page.context().clearCookies();
 		await page.goto('/');
+		await expect(page.locator('[data-filter="status:open"]')).toBeVisible();
+		await expect(page.locator('[data-filter="involved:true"]')).toBeVisible();
 		const { dashboard } = await initialPageProps<HomePageProps>(page);
 		const item = dashboard.pullRequests.items[0];
 		await clearDefaultFilters(page);
@@ -151,9 +182,11 @@ test.describe.serial('Docker dashboard end to end', () => {
 		await input.type(item.state.slice(0, 2));
 		await page.getByRole('option', { name: statusLabel(item.state), exact: true }).click();
 		await expect(page.locator(`[data-filter="status:${item.state}"]`)).toBeVisible();
+		await chooseFilter(page, 'Involved', 'False');
 
 		await page.reload();
 		await expect(page.locator(`[data-filter="status:${item.state}"]`)).toBeVisible();
+		await expect(page.locator('[data-filter="involved:false"]')).toBeVisible();
 	});
 
 	test('opens the filter menu from the input and anchors it at the input point', async ({ page }) => {

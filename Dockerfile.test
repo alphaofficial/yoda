@@ -10,6 +10,8 @@ COPY . .
 
 RUN npm run build
 
+ENV PORT=3334
+
 EXPOSE 3334
 
 CMD ["sh", "-c", "npm run migration:run && npm run dashboard:setup && node dist/index.js"]

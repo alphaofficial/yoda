@@ -1,6 +1,6 @@
 import type { Request, Response } from 'express';
 
-export type SettingsSection = 'general' | 'github' | 'shortcuts';
+export type SettingsSection = 'general' | 'github' | 'shortcuts' | 'backups';
 
 export interface SettingsFeedback {
 	type: 'success' | 'error';

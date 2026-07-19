@@ -69,20 +69,20 @@ export default function ShortcutPanel({ shortcutGroups, limit }: ShortcutPanelPr
 	const visibleShortcuts = matchingShortcuts.slice(0, limit);
 
 	return (
-		<section aria-label="Shortcuts" className="flex flex-col gap-6">
+		<section aria-label="Quick links" className="flex flex-col gap-6">
 			<div className="grid gap-3">
-				<h2 className="display-heading text-base leading-snug text-foreground">Shortcuts</h2>
+				<h2 className="display-heading text-base leading-snug text-foreground">Quick links</h2>
 				{allShortcuts.length > 0 && (
 					<div className="relative">
 						<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-						<Input value={query} onChange={event => setQuery(event.target.value)} aria-label="Search shortcuts" placeholder="Search shortcuts" className="h-8 pl-9 text-sm" />
+						<Input value={query} onChange={event => setQuery(event.target.value)} aria-label="Search quick links" placeholder="Search quick links" className="h-8 pl-9 text-sm" />
 					</div>
 				)}
 			</div>
 			{allShortcuts.length === 0 ? (
-				<p className="text-muted-foreground">No shortcuts configured</p>
+				<p className="text-muted-foreground">No quick links configured</p>
 			) : matchingShortcuts.length === 0 ? (
-				<p className="text-muted-foreground">No matching shortcuts</p>
+				<p className="text-muted-foreground">No matching quick links</p>
 			) : (
 				<div className="flex flex-col gap-3">
 					{visibleShortcuts.map(shortcut => (

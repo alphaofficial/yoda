@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { createShortcut, dashboardIndex, deleteShortcut, importBookmarkShortcuts, refreshPullRequests, reorderShortcuts, updateShortcut } from '@/controllers/dashboard';
-import { exportShortcuts, importShortcuts, settingsIndex, updateSettings } from '@/controllers/settings';
+import { createBackup, exportShortcuts, importShortcuts, settingsIndex, updateSettings } from '@/controllers/settings';
 import { applyInertia } from '@/middleware/inertia';
 
 const route = Router();
@@ -11,6 +11,7 @@ route.get('/', dashboardIndex);
 route.post('/pull-requests/refresh', refreshPullRequests);
 route.get('/settings', settingsIndex);
 route.patch('/settings', updateSettings);
+route.post('/settings/backups', createBackup);
 route.get('/settings/shortcuts/export', exportShortcuts);
 route.post('/settings/shortcuts/import', importShortcuts);
 route.post('/settings/shortcuts', createShortcut);

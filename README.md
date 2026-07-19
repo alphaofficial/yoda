@@ -1,6 +1,6 @@
 <h1 align="center">Yoda</h1>
 
-`yoda` is a private, self-hosted dashboard for replacing your browser home page with GitHub pull request context and persistent shortcuts.
+`yoda` is a private, self-hosted dashboard for replacing your browser home page with GitHub pull request context and persistent quick links.
 
 ## Quick start
 
@@ -40,6 +40,7 @@ Development falls back to built-in local-only keys if these variables are not se
 | `SESSION_SECRET` | development fallback | Session signing key. Required in production. |
 | `APP_KEY` | development fallback | HMAC signing key. Required in production. |
 | `DB_PATH` | `yoda.db` | SQLite database path. Use a mounted path in Docker. |
+| `BACKUP_PATH` | `backups` | Directory used for scheduled and manual database backups. |
 | `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Seed file path for first-time dashboard setup. |
 | `DASHBOARD_CACHE_TTL_SECONDS` | `180` | Dashboard cache TTL. Must be 5–3600 seconds. |
 | `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL. Must be 60–86400 seconds. |
@@ -66,7 +67,7 @@ See `env.example` for mail, storage, session, and rate-limit options inherited f
   "shortcutGroups": [
     {
       "id": "shortcuts",
-      "label": "Shortcuts",
+      "label": "Quick links",
       "shortcuts": [
         {
           "id": "jira",
@@ -97,7 +98,7 @@ The Docker entrypoint runs this automatically after pending migrations.
 
 For fine-grained personal access tokens, grant read-only access to the repositories you want to display and enable read permissions for contents and pull requests.
 
-GitHub credentials are stored in SQLite and are not included in shortcut exports.
+GitHub credentials are stored in SQLite and are not included in quick link exports.
 
 ## Scripts
 
@@ -112,7 +113,7 @@ GitHub credentials are stored in SQLite and are not included in shortcut exports
 | `npm run migration:create` | Creates a new MikroORM migration. |
 | `npm run migration:revert` | Rolls back the latest migration. |
 | `npm run migration:status` | Checks migration status. |
-| `npm run dashboard:setup` | Seeds dashboard settings and shortcuts when the database is empty. |
+| `npm run dashboard:setup` | Seeds dashboard settings and quick links when the database is empty. |
 | `npm run test:typecheck` | Runs TypeScript checks for tests. |
 | `npm test` | Runs Vitest integration tests. |
 | `npm run test:e2e` | Runs Playwright tests. |
@@ -126,48 +127,37 @@ Copy and edit the environment file:
 cp env.example .env
 ```
 
-Build the image and create a persistent SQLite volume:
+Build and start the app using the local `yoda.db` database:
 
 ```bash
-docker build -t yoda .
-docker volume create yoda-data
+docker compose up --build --detach
 ```
 
-Run the container:
-
-```bash
-docker run -d \
-  --name yoda \
-  --restart unless-stopped \
-  --env-file .env \
-  --env DB_PATH=/data/yoda.db \
-  --volume yoda-data:/data \
-  --publish 127.0.0.1:3333:3333 \
-  yoda
-```
-
-At startup, the container applies pending migrations, seeds an empty dashboard database from `config/dashboard.json`, and starts PM2.
+At startup, the container applies pending migrations, seeds an empty dashboard database from `config/dashboard.json`, and starts the app and scheduled-task worker. The Compose file mounts `./yoda.db` as the live database and `./backups` as the backup directory.
 
 Useful commands:
 
 ```bash
-docker logs -f yoda
-docker stop yoda
-docker start yoda
+docker compose logs --follow app
+docker compose stop app
+docker compose start app
+docker compose down
 ```
 
 ## Health checks
 
 ```bash
-curl http://localhost:3333/healthz
-curl http://localhost:3333/readyz
+curl http://localhost:3336/healthz
+curl http://localhost:3336/readyz
 ```
 
 ## Backups
 
-Back up the SQLite database and `.env` file. For Docker, that means backing up the `yoda-data` volume plus the environment file used to start the container.
+Use Settings → Backups to choose the backup frequency and retention period, or create one immediately. Retention removes expired backups but always keeps the newest backup; no cleanup runs while scheduled backups are off. Docker writes backups to `./backups`; local development uses `BACKUP_PATH` (default: `backups`).
 
-Shortcut exports are useful for moving dashboard links between instances, but they intentionally exclude the GitHub token and runtime secrets.
+Back up the `.env` file separately because database backups do not contain runtime secrets stored there.
+
+Quick link exports are useful for moving dashboard links between instances, but they intentionally exclude the GitHub token and runtime secrets.
 
 ## Troubleshooting
 
@@ -183,11 +173,11 @@ GitHub GraphQL rate limits are reported through integration health. Increase `DA
 
 ### Changes do not appear immediately
 
-Dashboard data is cached by `DASHBOARD_CACHE_TTL_SECONDS`. Settings and shortcut mutations invalidate the cached snapshot, while stale external data refreshes in the background.
+Dashboard data is cached by `DASHBOARD_CACHE_TTL_SECONDS`. Settings and quick link mutations invalidate the cached snapshot, while stale external data refreshes in the background.
 
 ### Container data disappeared
 
-Check that `DB_PATH` points to a mounted path such as `/data/yoda.db` and that the `yoda-data` volume is attached when starting the container.
+The included Compose file bind-mounts `./yoda.db` to `/data/yoda.db`. Run Compose from the repository directory and do not delete or replace that host file.
 
 ## Documentation
 

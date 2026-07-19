@@ -1,11 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { exportShortcuts, importShortcuts } from '@/controllers/settings';
+import { createBackup, exportShortcuts, importShortcuts } from '@/controllers/settings';
 
 const settingsMocks = vi.hoisted(() => ({
 	getSettings: vi.fn(),
 	importShortcuts: vi.fn(),
+}));
+
+const backupMocks = vi.hoisted(() => ({
+	create: vi.fn(),
 }));
 
 vi.mock('@/core/dashboard', () => ({
@@ -13,6 +17,11 @@ vi.mock('@/core/dashboard', () => ({
 		settings: settingsMocks.getSettings,
 		importShortcuts: settingsMocks.importShortcuts,
 	},
+}));
+
+vi.mock('@/core/backup', () => ({
+	createDatabaseBackup: backupMocks.create,
+	getBackupStatus: vi.fn().mockResolvedValue({ count: 0, lastBackupAt: null }),
 }));
 
 vi.mock('@/config/variables', () => ({
@@ -33,6 +42,8 @@ const config = {
 	displayName: 'Albert',
 	timeZone: 'Europe/London',
 	shortcutLimit: 8,
+	backupIntervalHours: 24,
+	backupRetentionDays: 30,
 	githubToken: 'secret-token',
 	github: { repositoryScopes: ['owner/repository'], windowDays: 7 },
 	shortcutGroups,
@@ -48,6 +59,7 @@ function createApp() {
 	});
 	app.get('/settings/shortcuts/export', exportShortcuts);
 	app.post('/settings/shortcuts/import', importShortcuts);
+	app.post('/settings/backups', createBackup);
 	return app;
 }
 
@@ -62,7 +74,7 @@ describe('shortcut settings transfer routes', () => {
 		const response = await request(createApp()).get('/settings/shortcuts/export');
 
 		expect(response.status).toBe(200);
-		expect(response.headers['content-disposition']).toMatch(/^attachment; filename="yoda-shortcuts-\d{4}-\d{2}-\d{2}\.json"$/);
+		expect(response.headers['content-disposition']).toMatch(/^attachment; filename="yoda-quick-links-\d{4}-\d{2}-\d{2}\.json"$/);
 		expect(response.body.version).toBe(1);
 		expect(response.body.shortcutGroups).toEqual(shortcutGroups);
 		expect(JSON.stringify(response.body)).not.toContain('secret-token');
@@ -88,5 +100,13 @@ describe('shortcut settings transfer routes', () => {
 		expect(response.status).toBe(303);
 		expect(response.headers.location).toBe('/settings?section=shortcuts');
 		expect(settingsMocks.importShortcuts).not.toHaveBeenCalled();
+	});
+
+	it('creates a database backup on demand', async () => {
+		const response = await request(createApp()).post('/settings/backups');
+
+		expect(response.status).toBe(303);
+		expect(response.headers.location).toBe('/settings?section=backups');
+		expect(backupMocks.create).toHaveBeenCalledWith(expect.any(Object), 30, expect.any(Date), undefined, true);
 	});
 });

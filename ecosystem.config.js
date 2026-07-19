@@ -11,7 +11,14 @@ module.exports = {
       watch: false,
       max_memory_restart: "1G",
     },
-    // fork mode runs your script as a single Node.js process.
-    // Good for workers, background jobs, scripts not needing HTTP load balancing
+    {
+      name: "Worker",
+      script: "./dist/worker.js",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      watch: false,
+      max_memory_restart: "1G",
+    },
   ],
 };

@@ -62,6 +62,7 @@ const variables = {
 	SESSION_SECRET: env('SESSION_SECRET'),
 	SESSION_MAX_AGE: env.int('SESSION_MAX_AGE', 24 * 60 * 60 * 1000),
 	DB_PATH: env('DB_PATH', 'yoda.db')!,
+	BACKUP_PATH: env('BACKUP_PATH', 'backups')!,
 	RATE_LIMIT_ENABLED: env.bool('RATE_LIMIT_ENABLED', false),
 	RATE_LIMIT_AUTH_MAX: env.int('RATE_LIMIT_AUTH_MAX', 5),
 	RATE_LIMIT_AUTH_WINDOW_MS: env.int('RATE_LIMIT_AUTH_WINDOW_MS', 60_000),

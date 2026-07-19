@@ -9,7 +9,7 @@
 	"shortcutGroups": [
 		{
 			"id": "shortcuts",
-			"label": "Shortcuts",
+			"label": "Quick links",
 			"shortcuts": [
 				{
 					"id": "jira",

@@ -6,6 +6,7 @@ import {
 	ChevronLeft,
 	ChevronRight,
 	ChevronUp,
+	DatabaseBackup,
 	Download,
 	ExternalLink,
 	GitPullRequest,
@@ -27,7 +28,7 @@ import { Select } from '@/views/components/ui/select';
 import type { GitHubRepository, GitHubRepositoryCatalog, ShortcutGroupConfig, ShortcutItem, ThemePreference, TimeFormat } from '@/types/dashboard';
 import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 
-type SettingsSection = 'general' | 'github' | 'shortcuts';
+type SettingsSection = 'general' | 'github' | 'shortcuts' | 'backups';
 
 interface SettingsData {
 	displayName: string;
@@ -35,6 +36,8 @@ interface SettingsData {
 	timeFormat: TimeFormat;
 	theme: ThemePreference;
 	shortcutLimit: number;
+	backupIntervalHours: number;
+	backupRetentionDays: number;
 	pullRequestWindowDays: number;
 	githubTokenConfigured: boolean;
 	repositoryScopes: string[];
@@ -47,6 +50,7 @@ interface PageProps extends InertiaPageProps {
 	feedback: { type: 'success' | 'error'; message: string } | null;
 	repositoryCatalog: (GitHubRepositoryCatalog & { selectedScopes: string[] }) | null;
 	repositoryError: string;
+	backupStatus: { count: number; lastBackupAt: string | null };
 	settings: SettingsData;
 }
 
@@ -129,7 +133,8 @@ function fuzzyMatch(value: string, query: string): boolean {
 const sections = [
 	{ id: 'general' as const, label: 'General', icon: Settings2 },
 	{ id: 'github' as const, label: 'GitHub', icon: GitPullRequest },
-	{ id: 'shortcuts' as const, label: 'Shortcuts', icon: Link2 },
+	{ id: 'shortcuts' as const, label: 'Quick links', icon: Link2 },
+	{ id: 'backups' as const, label: 'Backups', icon: DatabaseBackup },
 ];
 
 function BookmarkImporter({
@@ -355,6 +360,8 @@ export default function Settings() {
 	const [timeFormat, setTimeFormat] = useState<TimeFormat>(settings.timeFormat ?? '12');
 	const [theme, setTheme] = useState<ThemePreference>(settings.theme ?? 'light');
 	const [shortcutLimit, setShortcutLimit] = useState(settings.shortcutLimit);
+	const [backupIntervalHours, setBackupIntervalHours] = useState(settings.backupIntervalHours);
+	const [backupRetentionDays, setBackupRetentionDays] = useState(settings.backupRetentionDays);
 	const [pullRequestWindowDays, setPullRequestWindowDays] = useState(settings.pullRequestWindowDays ?? 7);
 	const [token, setToken] = useState('');
 	const [repositoryCatalog, setRepositoryCatalog] = useState<GitHubRepositoryCatalog | null>(initialRepositoryCatalog);
@@ -372,6 +379,7 @@ export default function Settings() {
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
+	const [backingUp, setBackingUp] = useState(false);
 	const [message, setMessage] = useState(props.feedback?.message ?? '');
 	const shortcutImportRef = useRef<HTMLInputElement>(null);
 
@@ -383,6 +391,8 @@ export default function Settings() {
 		setTimeFormat(next.timeFormat);
 		setTheme(next.theme);
 		setShortcutLimit(next.shortcutLimit);
+		setBackupIntervalHours(next.backupIntervalHours);
+		setBackupRetentionDays(next.backupRetentionDays);
 		setPullRequestWindowDays(next.pullRequestWindowDays);
 		setGroups(next.shortcutGroups);
 		setNewShortcutGroupId(current => next.shortcutGroups.some(group => group.id === current) ? current : next.shortcutGroups[0]?.id ?? '');
@@ -489,7 +499,7 @@ export default function Settings() {
 				setNewShortcutLabel('');
 				setNewShortcutUrl('');
 			},
-			onError: () => setMessage('Could not add shortcut.'),
+			onError: () => setMessage('Could not add quick link.'),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -513,7 +523,7 @@ export default function Settings() {
 				applySettingsPage(page);
 				setEditingShortcutId(null);
 			},
-			onError: () => setMessage('Could not update shortcut.'),
+			onError: () => setMessage('Could not update quick link.'),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -527,7 +537,7 @@ export default function Settings() {
 				applySettingsPage(page);
 				setConfirmDeleteId(null);
 			},
-			onError: () => setMessage('Could not remove shortcut.'),
+			onError: () => setMessage('Could not remove quick link.'),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -538,14 +548,36 @@ export default function Settings() {
 		router.patch('/settings?section=shortcuts', { shortcutLimit }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save shortcut display limit.'),
+			onError: () => setMessage('Could not save quick link limit.'),
 			onFinish: () => setSaving(false),
+		});
+	};
+
+	const saveBackups = () => {
+		setSaving(true);
+		setMessage('');
+		router.patch('/settings?section=backups', { backupIntervalHours, backupRetentionDays }, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => setMessage('Could not save backup settings.'),
+			onFinish: () => setSaving(false),
+		});
+	};
+
+	const backupNow = () => {
+		setBackingUp(true);
+		setMessage('');
+		router.post('/settings/backups', {}, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => setMessage('Could not create backup.'),
+			onFinish: () => setBackingUp(false),
 		});
 	};
 
 	const persistOrder = async (groupId: string, nextShortcuts: ShortcutGroupConfig['shortcuts'], previousShortcuts: ShortcutGroupConfig['shortcuts']) => {
 		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: nextShortcuts } : group));
-		setMessage('Saving shortcut order…');
+		setMessage('Saving quick link order…');
 		router.put('/settings/shortcuts/reorder', {
 			groupId,
 			shortcutIds: nextShortcuts.map(shortcut => shortcut.id),
@@ -554,7 +586,7 @@ export default function Settings() {
 			onSuccess: applySettingsPage,
 			onError: () => {
 				setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: previousShortcuts } : group));
-				setMessage('Could not save shortcut order.');
+				setMessage('Could not save quick link order.');
 			},
 		});
 	};
@@ -611,13 +643,13 @@ export default function Settings() {
 					setEditingShortcutId(null);
 					setConfirmDeleteId(null);
 				},
-				onError: () => setMessage('Could not import shortcuts.'),
+				onError: () => setMessage('Could not import quick links.'),
 				onFinish: () => setSaving(false),
 			});
 		} catch (caught) {
 			setMessage(caught instanceof SyntaxError
 				? 'That file is not valid JSON.'
-				: caught instanceof Error ? caught.message : 'Could not import shortcuts.');
+				: caught instanceof Error ? caught.message : 'Could not import quick links.');
 			event.target.value = '';
 			setSaving(false);
 		}
@@ -801,12 +833,61 @@ export default function Settings() {
 								</section>
 							)}
 
+							{activeSection === 'backups' && (
+								<section className="settings-panel rounded-lg" aria-labelledby="backup-settings-heading">
+									<div>
+										<h2 id="backup-settings-heading" className="display-heading settings-section-title">Backups</h2>
+										<p className="mt-1 text-sm text-muted-foreground">Automatic database backups stored on disk.</p>
+									</div>
+									<div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border bg-muted/30 p-4">
+										<div className="flex min-w-0 items-center gap-3">
+											<div className="flex size-10 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-sm">
+												<DatabaseBackup className="size-5" aria-hidden="true" />
+											</div>
+											<div className="min-w-0">
+												<p className="font-semibold">{props.backupStatus.count === 1 ? '1 backup' : `${props.backupStatus.count} backups`}</p>
+												<p className="text-sm text-muted-foreground">
+													{props.backupStatus.lastBackupAt
+														? `Latest ${new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: settings.timeZone }).format(new Date(props.backupStatus.lastBackupAt))}`
+														: 'No backup has been created yet.'}
+												</p>
+											</div>
+										</div>
+										<Button type="button" variant="outline" onClick={backupNow} disabled={backingUp || saving}>{backingUp ? 'Creating…' : 'Back up now'}</Button>
+									</div>
+									<div className="settings-form-grid">
+										<div className="grid gap-2">
+											<Label htmlFor="settings-backup-period">Backup frequency</Label>
+											<div className="relative">
+												<Select id="settings-backup-period" value={backupIntervalHours} onChange={event => setBackupIntervalHours(Number(event.target.value))} className="appearance-none pr-10">
+													<option value={0}>Off</option>
+													<option value={1}>Every hour</option>
+													<option value={6}>Every 6 hours</option>
+													<option value={12}>Every 12 hours</option>
+													<option value={24}>Every day</option>
+													<option value={168}>Every week</option>
+												</Select>
+												<ChevronDown className="pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+											</div>
+										</div>
+										<div className="grid gap-2">
+											<Label htmlFor="settings-backup-retention">Retention (days)</Label>
+											<Input id="settings-backup-retention" type="number" min={1} max={365} value={backupRetentionDays} onChange={event => setBackupRetentionDays(Math.max(1, Math.min(365, Number(event.target.value) || 1)))} />
+										</div>
+									</div>
+									<p className="-mt-3 text-sm text-muted-foreground">Expired backups are deleted automatically. The newest backup is always kept.</p>
+									<div className="settings-save-action flex justify-end border-t pt-6">
+										<Button type="button" onClick={saveBackups} disabled={saving || backingUp}>{saving ? 'Saving…' : 'Save settings'}</Button>
+									</div>
+								</section>
+							)}
+
 							{activeSection === 'shortcuts' && (
 								<section className="settings-panel rounded-lg" aria-labelledby="shortcut-settings-heading">
 									<div className="flex flex-wrap items-start justify-between gap-3">
 										<div>
-											<h2 id="shortcut-settings-heading" className="display-heading settings-section-title">Shortcuts</h2>
-											<p className="mt-1 text-sm text-muted-foreground">Choose how many shortcuts appear, then add, reorder, or edit them below.</p>
+											<h2 id="shortcut-settings-heading" className="display-heading settings-section-title">Quick links</h2>
+											<p className="mt-1 text-sm text-muted-foreground">Add, reorder, or edit quick links.</p>
 										</div>
 										<BookmarkImporter groups={groups} onImported={handleImported} />
 									</div>
@@ -817,7 +898,7 @@ export default function Settings() {
 										</div>
 										<Button type="button" variant="outline" className="shrink-0" onClick={saveShortcutLimit} disabled={saving}>Save limit</Button>
 									</div>
-									{groups.length === 0 && <p className="text-muted-foreground">No shortcut groups configured.</p>}
+									{groups.length === 0 && <p className="text-muted-foreground">No quick link groups configured.</p>}
 									{groups.map(group => (
 										<div key={group.id} className="shortcut-settings-group">
 											<h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
@@ -825,9 +906,9 @@ export default function Settings() {
 												{group.id === newShortcutGroupId && (
 													<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
 														<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-3' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
-															{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Shortcut group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
-															<Input id="new-shortcut-label" aria-label="Shortcut label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
-															<Input id="new-shortcut-url" aria-label="Shortcut URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
+															{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Quick link group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
+															<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
+															<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
 														</div>
 														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>{saving ? 'Adding…' : 'Add'}</Button>
 													</form>
@@ -846,8 +927,8 @@ export default function Settings() {
 														<GripVertical className="shortcut-drag-handle" aria-hidden="true" />
 														{editingShortcutId === shortcut.id ? (
 															<div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-																<Input aria-label="Shortcut label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
-																<Input aria-label="Shortcut URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
+														<Input aria-label="Quick link label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
+														<Input aria-label="Quick link URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
 															</div>
 														) : (
 															<div className="min-w-0 flex-1"><p className="truncate font-medium">{shortcut.label}</p><p className="truncate text-sm text-muted-foreground">{shortcut.url}</p></div>
@@ -868,17 +949,17 @@ export default function Settings() {
 									<div className="grid gap-3 border-t pt-6">
 										<div>
 											<h3 className="font-semibold">Backup and restore</h3>
-											<p className="mt-1 text-sm text-muted-foreground">Export shortcuts to another dashboard instance. Importing replaces the shortcuts currently stored here.</p>
+											<p className="mt-1 text-sm text-muted-foreground">Export or import quick links.</p>
 										</div>
 										<div className="flex flex-wrap gap-2">
 											<Button variant="outline" render={<a href="/settings/shortcuts/export" download />}>
 												<Download aria-hidden="true" />
-												Export shortcuts
+												Export quick links
 											</Button>
 											<input ref={shortcutImportRef} className="sr-only" type="file" accept=".json,application/json" onChange={importShortcutSettings} />
 											<Button type="button" variant="outline" onClick={() => shortcutImportRef.current?.click()} disabled={saving}>
 												<Upload aria-hidden="true" />
-												Import shortcuts
+												Import quick links
 											</Button>
 										</div>
 									</div>

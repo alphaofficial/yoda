@@ -3,6 +3,7 @@
 .env
 node_modules
 dist
+backups
 public/app.js
 public/main.css
 test

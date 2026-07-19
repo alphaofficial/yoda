@@ -25,7 +25,7 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 
 	for (const shortcut of shortcuts.sort((a, b) => a.position - b.position)) {
 		if (!groups.has(shortcut.groupId)) {
-			groups.set(shortcut.groupId, { id: shortcut.groupId, label: shortcut.groupLabel, shortcuts: [] });
+			groups.set(shortcut.groupId, { id: shortcut.groupId, label: shortcut.groupId === 'shortcuts' && shortcut.groupLabel === 'Shortcuts' ? 'Quick links' : shortcut.groupLabel, shortcuts: [] });
 		}
 
 		groups.get(shortcut.groupId)!.shortcuts.push({
@@ -35,7 +35,7 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 			icon: shortcut.icon,
 		});
 	}
-	if (groups.size === 0) groups.set('shortcuts', { id: 'shortcuts', label: 'Shortcuts', shortcuts: [] });
+	if (groups.size === 0) groups.set('shortcuts', { id: 'shortcuts', label: 'Quick links', shortcuts: [] });
 
 	return {
 		displayName: settings.displayName,
@@ -43,6 +43,8 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 		timeFormat: settings.timeFormat === '24' ? '24' : '12',
 		theme: settings.theme === 'dark' || settings.theme === 'system' ? settings.theme : 'light',
 		shortcutLimit: settings.shortcutLimit ?? 8,
+		backupIntervalHours: settings.backupIntervalHours ?? 24,
+		backupRetentionDays: settings.backupRetentionDays ?? 30,
 		githubToken: settings.githubToken ?? null,
 		github: { repositoryScopes: parseRepositoryScopes(settings), windowDays: settings.pullRequestWindowDays ?? 7 },
 		shortcutGroups: Array.from(groups.values()),
@@ -64,6 +66,8 @@ export function createDashboardRepository(db: EntityManager) {
 			theme: config.theme ?? 'light',
 			shortcutLimit: config.shortcutLimit ?? 8,
 			pullRequestWindowDays: config.github.windowDays ?? 7,
+			backupIntervalHours: 24,
+			backupRetentionDays: 30,
 			githubToken: config.githubToken ?? null,
 			repositoryScopes: JSON.stringify(config.github.repositoryScopes),
 			pullRequestFilters: '{}',
@@ -97,7 +101,16 @@ export function createDashboardRepository(db: EntityManager) {
 		return toSettings(settings, shortcuts);
 	}
 
-	async function updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
+	async function getBackupPolicy(): Promise<{ intervalHours: number; retentionDays: number } | null> {
+		const settings = await db.findOne(DashboardSettings, { id: 'default' });
+		if (!settings) return null;
+		return {
+			intervalHours: settings.backupIntervalHours ?? 24,
+			retentionDays: settings.backupRetentionDays ?? 30,
+		};
+	}
+
+	async function updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; backupIntervalHours?: number; backupRetentionDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
 		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
 		settings.displayName = typeof input.displayName === 'string' ? input.displayName.trim() : settings.displayName;
 		settings.timeZone = typeof input.timeZone === 'string' ? input.timeZone : settings.timeZone;
@@ -109,6 +122,13 @@ export function createDashboardRepository(db: EntityManager) {
 		settings.pullRequestWindowDays = typeof input.pullRequestWindowDays === 'number' && Number.isInteger(input.pullRequestWindowDays)
 			? Math.max(1, Math.min(30, input.pullRequestWindowDays))
 			: settings.pullRequestWindowDays;
+		settings.backupIntervalHours = typeof input.backupIntervalHours === 'number'
+			&& [0, 1, 6, 12, 24, 168].includes(input.backupIntervalHours)
+			? input.backupIntervalHours
+			: settings.backupIntervalHours;
+		settings.backupRetentionDays = typeof input.backupRetentionDays === 'number' && Number.isInteger(input.backupRetentionDays)
+			? Math.max(1, Math.min(365, input.backupRetentionDays))
+			: settings.backupRetentionDays;
 		settings.githubToken = input.githubToken !== undefined ? (input.githubToken ? input.githubToken.trim() : null) : settings.githubToken ?? null;
 		await db.flush();
 		return getSettings();
@@ -128,50 +148,148 @@ export function createDashboardRepository(db: EntityManager) {
 		return db.transactional(async transactionalDb => {
 			const settings = await transactionalDb.findOneOrFail(DashboardSettings, { id: 'default' });
 			const existing = await transactionalDb.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
-			const imported = shortcutGroups.flatMap(group => group.shortcuts.map((shortcut, position) => ({
-				id: shortcut.id,
-				groupId: group.id,
-				groupLabel: group.label,
-				label: shortcut.label,
-				url: shortcut.url,
-				icon: shortcut.icon,
-				position,
-			}))).sort((a, b) => a.groupId.localeCompare(b.groupId) || a.position - b.position);
-			const unchanged = existing.length === imported.length && existing.every((shortcut, index) => {
-				const candidate = imported[index];
-				return shortcut.id === candidate.id
-					&& shortcut.groupId === candidate.groupId
-					&& shortcut.groupLabel === candidate.groupLabel
-					&& shortcut.label === candidate.label
-					&& shortcut.url === candidate.url
-					&& shortcut.icon === candidate.icon
-					&& shortcut.position === candidate.position;
-			});
-			if (unchanged) return toSettings(settings, existing);
-
-			await transactionalDb.nativeDelete(DashboardShortcut, {});
 			const now = new Date();
-			const shortcuts = imported.map(shortcut => transactionalDb.create(DashboardShortcut, {
-				id: shortcut.id,
-				groupId: shortcut.groupId,
-				groupLabel: shortcut.groupLabel,
-				label: shortcut.label,
-				url: shortcut.url,
-				icon: shortcut.icon,
-				position: shortcut.position,
-				createdAt: now,
-				updatedAt: now,
-			}));
+			let changed = false;
+			const importedNames = new Set<string>();
+			const importedGroupLabels = new Map<string, string>();
+			const imported = shortcutGroups.flatMap(group => {
+				importedGroupLabels.set(group.id, group.label);
+				return group.shortcuts.flatMap(shortcut => {
+					const name = shortcut.label.trim().toLowerCase();
+					if (importedNames.has(name)) return [];
+					importedNames.add(name);
+					return [{ groupId: group.id, groupLabel: group.label, shortcut, name }];
+				});
+			});
+			const importedIds = new Set(imported.map(candidate => candidate.shortcut.id));
+			const preferredIdByName = new Map(imported.map(candidate => [candidate.name, candidate.shortcut.id]));
+			const removed = new Set<DashboardShortcut>();
+			const existingById = new Map<string, DashboardShortcut>();
+			const existingByName = new Map<string, DashboardShortcut>();
 
-			if (shortcuts.length > 0) transactionalDb.persist(shortcuts);
-			await transactionalDb.flush();
+			// Keep one shortcut for each name, preferring the ID supplied by the import.
+			for (const shortcut of existing) {
+				const name = shortcut.label.trim().toLowerCase();
+				const duplicate = existingByName.get(name);
+				if (duplicate && preferredIdByName.get(name) === shortcut.id) {
+					removed.add(duplicate);
+					transactionalDb.remove(duplicate);
+					existingById.delete(duplicate.id);
+					existingById.set(shortcut.id, shortcut);
+					existingByName.set(name, shortcut);
+					changed = true;
+					continue;
+				}
+				if (duplicate) {
+					removed.add(shortcut);
+					transactionalDb.remove(shortcut);
+					changed = true;
+					continue;
+				}
+				existingById.set(shortcut.id, shortcut);
+				existingByName.set(name, shortcut);
+			}
+
+			const nextPositions = new Map<string, number>();
+			for (const shortcut of existingById.values()) {
+				nextPositions.set(shortcut.groupId, Math.max(nextPositions.get(shortcut.groupId) ?? 0, shortcut.position + 1));
+			}
+
+			const claimed = new Set<DashboardShortcut>();
+			const created: DashboardShortcut[] = [];
+
+			for (const { groupId, groupLabel, shortcut, name } of imported) {
+				const idMatch = existingById.get(shortcut.id);
+				const nameMatch = existingByName.get(name);
+				if (idMatch && nameMatch && idMatch !== nameMatch && claimed.has(nameMatch)) continue;
+				if (idMatch && nameMatch && idMatch !== nameMatch && !importedIds.has(nameMatch.id)) {
+					removed.add(nameMatch);
+					transactionalDb.remove(nameMatch);
+					existingById.delete(nameMatch.id);
+					changed = true;
+				}
+
+				const target = idMatch ?? nameMatch;
+				if (target && (removed.has(target) || claimed.has(target))) continue;
+				if (target) {
+					claimed.add(target);
+					const groupChanged = target.groupId !== groupId;
+					const position = groupChanged ? nextPositions.get(groupId) ?? 0 : target.position;
+					if (groupChanged) nextPositions.set(groupId, position + 1);
+					const targetChanged = target.groupId !== groupId
+						|| target.groupLabel !== groupLabel
+						|| target.label !== shortcut.label
+						|| target.url !== shortcut.url
+						|| target.icon !== shortcut.icon
+						|| target.position !== position;
+					if (targetChanged) {
+						existingByName.delete(target.label.trim().toLowerCase());
+						target.groupId = groupId;
+						target.groupLabel = groupLabel;
+						target.label = shortcut.label;
+						target.url = shortcut.url;
+						target.icon = shortcut.icon;
+						target.position = position;
+						target.updatedAt = now;
+						existingByName.set(name, target);
+						changed = true;
+					}
+					continue;
+				}
+
+				const position = nextPositions.get(groupId) ?? 0;
+				nextPositions.set(groupId, position + 1);
+				const addition = transactionalDb.create(DashboardShortcut, {
+					id: shortcut.id,
+					groupId,
+					groupLabel,
+					label: shortcut.label,
+					url: shortcut.url,
+					icon: shortcut.icon,
+					position,
+					createdAt: now,
+					updatedAt: now,
+				});
+				created.push(addition);
+				claimed.add(addition);
+				changed = true;
+			}
+
+			const shortcuts = [...existing.filter(shortcut => !removed.has(shortcut)), ...created];
+			for (const shortcut of shortcuts) {
+				const groupLabel = importedGroupLabels.get(shortcut.groupId);
+				if (groupLabel && shortcut.groupLabel !== groupLabel) {
+					shortcut.groupLabel = groupLabel;
+					shortcut.updatedAt = now;
+					changed = true;
+				}
+			}
+
+			const grouped = new Map<string, DashboardShortcut[]>();
+			for (const shortcut of shortcuts) {
+				const group = grouped.get(shortcut.groupId) ?? [];
+				group.push(shortcut);
+				grouped.set(shortcut.groupId, group);
+			}
+			for (const group of grouped.values()) {
+				group.sort((a, b) => a.position - b.position);
+				group.forEach((shortcut, position) => {
+					if (shortcut.position === position) return;
+					shortcut.position = position;
+					shortcut.updatedAt = now;
+					changed = true;
+				});
+			}
+
+			if (created.length > 0) transactionalDb.persist(created);
+			if (changed) await transactionalDb.flush();
 			return toSettings(settings, shortcuts);
 		});
 	}
 
 	async function updateShortcut(id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
 		const shortcut = await db.findOne(DashboardShortcut, { id });
-		if (!shortcut) throw new ShortcutValidationError('Shortcut not found', { shortcutId: 'Shortcut not found' });
+		if (!shortcut) throw new ShortcutValidationError('Quick link not found', { shortcutId: 'Quick link not found' });
 		const validated = validateShortcutInput({
 			groupId: shortcut.groupId,
 			label: input.label ?? shortcut.label,
@@ -187,7 +305,7 @@ export function createDashboardRepository(db: EntityManager) {
 
 	async function deleteShortcut(id: string): Promise<void> {
 		const shortcut = await db.findOne(DashboardShortcut, { id });
-		if (!shortcut) throw new ShortcutValidationError('Shortcut not found', { shortcutId: 'Shortcut not found' });
+		if (!shortcut) throw new ShortcutValidationError('Quick link not found', { shortcutId: 'Quick link not found' });
 		const groupId = shortcut.groupId;
 		db.remove(shortcut);
 		const remaining = await db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
@@ -202,7 +320,7 @@ export function createDashboardRepository(db: EntityManager) {
 		const validated = validateShortcutInput(input);
 		const existing = await db.find(DashboardShortcut, { groupId: validated.groupId }, { orderBy: { position: 'asc' } });
 		const id = `${slugId(validated.label)}-${randomUUID().slice(0, 6)}`;
-		const groupLabel = existing[0]?.groupLabel ?? 'Shortcuts';
+		const groupLabel = existing[0]?.groupLabel ?? 'Quick links';
 		const position = validated.position ?? existing.length;
 		const now = new Date();
 		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, icon: validated.icon, position, createdAt: now, updatedAt: now });
@@ -230,7 +348,7 @@ export function createDashboardRepository(db: EntityManager) {
 				additions.push(transactionalDb.create(DashboardShortcut, {
 					id: `${slugId(shortcut.label)}-${randomUUID().slice(0, 6)}`,
 					groupId: shortcut.groupId,
-					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Shortcuts',
+					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Quick links',
 					label: shortcut.label,
 					url: shortcut.url,
 					icon: shortcut.icon,
@@ -259,7 +377,7 @@ export function createDashboardRepository(db: EntityManager) {
 			|| requestedIds.size !== shortcutIds.length
 			|| shortcutIds.some(id => !currentIds.has(id))
 		) {
-			throw new ShortcutValidationError('Invalid shortcut order', {
+			throw new ShortcutValidationError('Invalid quick link order', {
 				shortcutIds: 'Order must contain every shortcut in the group exactly once',
 			});
 		}
@@ -281,6 +399,7 @@ export function createDashboardRepository(db: EntityManager) {
 	return {
 		seedFromJsonIfEmpty,
 		getSettings,
+		getBackupPolicy,
 		updateSettings,
 		setRepositoryScopes,
 		importShortcuts,
