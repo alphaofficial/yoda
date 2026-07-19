@@ -32,7 +32,7 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
 				)}
 			</div>
 			<span className="min-w-0 flex-1 truncate font-medium text-foreground">{item.label}</span>
-			{!isObsidian && <ExternalLink className="size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />}
+			<ExternalLink className="size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />
 		</Card>
 	);
 
