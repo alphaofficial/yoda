@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
+import { createDashboardRepository } from '@/repositories/DashboardRepository';
 import { DashboardShortcut } from '@/models/DashboardShortcut';
 import type { ShortcutGroupConfig } from '@/types/dashboard';
 
-describe('DashboardConfigRepository shortcut import', () => {
+describe('DashboardRepository shortcut import', () => {
 	it('does not rewrite shortcuts when the imported data is unchanged', async () => {
 		const shortcut = Object.assign(new DashboardShortcut(), {
 			id: 'github',
@@ -19,7 +19,7 @@ describe('DashboardConfigRepository shortcut import', () => {
 			timeZone: 'Europe/London',
 			shortcutLimit: 8,
 			githubToken: null,
-			repositories: '[]',
+			repositoryScopes: '[]',
 			pullRequestWindowDays: 7,
 		};
 		const db = {
@@ -35,7 +35,7 @@ describe('DashboardConfigRepository shortcut import', () => {
 			shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com', icon: 'github' }],
 		}];
 
-		const config = await new DashboardConfigRepository(db as never).importShortcuts(shortcutGroups);
+		const config = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
 
 		expect(config.shortcutGroups).toEqual(shortcutGroups);
 		expect(db.nativeDelete).not.toHaveBeenCalled();
@@ -43,7 +43,7 @@ describe('DashboardConfigRepository shortcut import', () => {
 	});
 });
 
-describe('DashboardConfigRepository general settings', () => {
+describe('DashboardRepository general settings', () => {
 	it('persists the selected time format', async () => {
 		const settings = {
 			displayName: 'Albert',
@@ -52,7 +52,7 @@ describe('DashboardConfigRepository general settings', () => {
 			theme: 'light' as 'light' | 'dark' | 'system',
 			shortcutLimit: 8,
 			githubToken: null,
-			repositories: '[]',
+			repositoryScopes: '[]',
 			pullRequestWindowDays: 7,
 		};
 		const db = {
@@ -61,7 +61,7 @@ describe('DashboardConfigRepository general settings', () => {
 			flush: vi.fn().mockResolvedValue(undefined),
 		};
 
-		const config = await new DashboardConfigRepository(db as never).updateSettings({ timeFormat: '24' });
+		const config = await createDashboardRepository(db as never).updateSettings({ timeFormat: '24' });
 
 		expect(settings.timeFormat).toBe('24');
 		expect(config.timeFormat).toBe('24');
@@ -76,7 +76,7 @@ describe('DashboardConfigRepository general settings', () => {
 			theme: 'light' as 'light' | 'dark' | 'system',
 			shortcutLimit: 8,
 			githubToken: null,
-			repositories: '[]',
+			repositoryScopes: '[]',
 			pullRequestWindowDays: 7,
 		};
 		const db = {
@@ -85,7 +85,7 @@ describe('DashboardConfigRepository general settings', () => {
 			flush: vi.fn().mockResolvedValue(undefined),
 		};
 
-		const config = await new DashboardConfigRepository(db as never).updateSettings({ theme: 'dark' });
+		const config = await createDashboardRepository(db as never).updateSettings({ theme: 'dark' });
 
 		expect(settings.theme).toBe('dark');
 		expect(config.theme).toBe('dark');

@@ -1,4 +1,4 @@
-import { Head, router, usePage } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { useEffect, useReducer, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import {
 	ArrowLeft,
@@ -12,6 +12,7 @@ import {
 	GripVertical,
 	Link2,
 	Pencil,
+	RefreshCw,
 	Search,
 	Settings2,
 	Trash2,
@@ -36,7 +37,7 @@ interface SettingsData {
 	shortcutLimit: number;
 	pullRequestWindowDays: number;
 	githubTokenConfigured: boolean;
-	repositories: string[];
+	repositoryScopes: string[];
 	shortcutGroups: ShortcutGroupConfig[];
 }
 
@@ -271,6 +272,80 @@ function BookmarkImporter({
 	);
 }
 
+function RepositoryOwnerGroup({
+	owner,
+	repositories,
+	selectedRepositories,
+	searchQuery,
+	onToggleScope,
+}: {
+	owner: string;
+	repositories: GitHubRepository[];
+	selectedRepositories: string[];
+	searchQuery: string;
+	onToggleScope: (scope: string, owner?: string) => void;
+}) {
+	const [state, dispatch] = useReducer((current: { expanded: boolean; page: number }, action: { type: 'toggle' | 'previous' | 'next' } | { type: 'searchChanged'; hasSearch: boolean }) => {
+		switch (action.type) {
+			case 'toggle': return { ...current, expanded: !current.expanded };
+			case 'previous': return { ...current, page: current.page - 1 };
+			case 'next': return { ...current, page: current.page + 1 };
+			case 'searchChanged': return { ...current, expanded: action.hasSearch || current.expanded, page: 1 };
+		}
+	}, { expanded: false, page: 1 });
+	useEffect(() => dispatch({ type: 'searchChanged', hasSearch: searchQuery.trim().length > 0 }), [searchQuery]);
+	const expanded = state.expanded;
+	const pageCount = Math.max(1, Math.ceil(repositories.length / REPOSITORIES_PER_PAGE));
+	const page = Math.min(state.page, pageCount);
+	const visibleRepositories = repositories.slice((page - 1) * REPOSITORIES_PER_PAGE, page * REPOSITORIES_PER_PAGE);
+	const wildcard = `${owner}/*`;
+	const wildcardSelected = selectedRepositories.includes(wildcard);
+
+	return (
+		<div className="border-b last:border-b-0">
+			<div className="flex items-center bg-muted/40">
+				<Button
+					type="button"
+					variant="ghost"
+					size="icon-xs"
+					className="ml-2"
+					aria-label={`${expanded ? 'Collapse' : 'Expand'} ${owner} repositories`}
+					aria-expanded={expanded}
+					onClick={() => dispatch({ type: 'toggle' })}
+				>
+					<ChevronRight className={expanded ? 'rotate-90 transition-transform' : 'transition-transform'} aria-hidden="true" />
+				</Button>
+				<label className="repository-option min-w-0 flex-1 pl-1 font-medium">
+					<input type="checkbox" checked={wildcardSelected} onChange={() => onToggleScope(wildcard, owner)} />
+					<span className="truncate">{wildcard}</span>
+					<span className="ml-auto text-xs text-muted-foreground">All repositories</span>
+				</label>
+			</div>
+			{expanded && visibleRepositories.map(repository => (
+				<label key={repository.id} className="repository-option pl-12">
+					<input
+						type="checkbox"
+						disabled={wildcardSelected}
+						checked={wildcardSelected || selectedRepositories.includes(repository.fullName)}
+						onChange={() => onToggleScope(repository.fullName)}
+					/>
+					<span className="truncate">{repository.name}</span>
+					<span className="ml-auto text-xs text-muted-foreground">{repository.archived ? 'Archived' : repository.private ? 'Private' : 'Public'}</span>
+				</label>
+			))}
+			{expanded && pageCount > 1 && (
+				<div className="flex items-center justify-between border-t px-4 py-2 text-sm text-muted-foreground">
+					<span>Page {page} of {pageCount}</span>
+					<div className="flex gap-1">
+						<Button type="button" variant="outline" size="icon-sm" aria-label={`Previous ${owner} repository page`} disabled={page === 1} onClick={() => dispatch({ type: 'previous' })}><ChevronLeft /></Button>
+						<Button type="button" variant="outline" size="icon-sm" aria-label={`Next ${owner} repository page`} disabled={page === pageCount} onClick={() => dispatch({ type: 'next' })}><ChevronRight /></Button>
+					</div>
+				</div>
+			)}
+		</div>
+	);
+}
+
 export default function Settings() {
 	const { props } = usePage<PageProps>();
 	const { activeSection: initialSection, applicationName, repositoryCatalog: initialRepositoryCatalog, repositoryError: initialRepositoryError, settings } = props;
@@ -283,9 +358,8 @@ export default function Settings() {
 	const [pullRequestWindowDays, setPullRequestWindowDays] = useState(settings.pullRequestWindowDays ?? 7);
 	const [token, setToken] = useState('');
 	const [repositoryCatalog, setRepositoryCatalog] = useState<GitHubRepositoryCatalog | null>(initialRepositoryCatalog);
-	const [selectedRepositories, setSelectedRepositories] = useState(initialRepositoryCatalog?.selectedScopes ?? settings.repositories);
+	const [selectedRepositories, setSelectedRepositories] = useState(initialRepositoryCatalog?.selectedScopes ?? settings.repositoryScopes);
 	const [repositorySearch, setRepositorySearch] = useState('');
-	const [repositoryPage, setRepositoryPage] = useState(1);
 	const [loadingRepositories, setLoadingRepositories] = useState(false);
 	const [repositoryError, setRepositoryError] = useState(initialRepositoryError);
 	const [groups, setGroups] = useState(settings.shortcutGroups);
@@ -313,7 +387,7 @@ export default function Settings() {
 		setGroups(next.shortcutGroups);
 		setNewShortcutGroupId(current => next.shortcutGroups.some(group => group.id === current) ? current : next.shortcutGroups[0]?.id ?? '');
 		setRepositoryCatalog(nextProps.repositoryCatalog);
-		setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? next.repositories);
+		setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? next.repositoryScopes);
 		setRepositoryError(nextProps.repositoryError);
 		if (nextProps.feedback) setMessage(nextProps.feedback.message);
 		return nextProps;
@@ -330,9 +404,8 @@ export default function Settings() {
 			onSuccess: page => {
 				const nextProps = page.props as unknown as PageProps;
 				setRepositoryCatalog(nextProps.repositoryCatalog);
-				setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? settings.repositories);
+				setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? settings.repositoryScopes);
 				setRepositoryError(nextProps.repositoryError);
-				setRepositoryPage(1);
 				window.history.replaceState(window.history.state, '', '/settings?section=github');
 			},
 			onError: () => setRepositoryError('Could not load repositories from GitHub.'),
@@ -377,12 +450,13 @@ export default function Settings() {
 		router.patch('/settings?section=github', {
 			githubToken: token || undefined,
 			pullRequestWindowDays,
-			...(repositoryCatalog && !replacingToken ? { repositories: selectedRepositories } : {}),
+			...(repositoryCatalog && !replacingToken ? { repositoryScopes: selectedRepositories } : {}),
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setToken('');
+				router.prefetch('/', {}, { cacheFor: '30s' });
 			},
 			onError: () => setMessage('Could not save GitHub settings.'),
 			onFinish: () => setSaving(false),
@@ -553,9 +627,7 @@ export default function Settings() {
 	const filteredRepositories = (repositoryCatalog?.repositories ?? []).filter(repository => {
 		return fuzzyMatch(`${repository.fullName} ${repository.owner} ${repository.name}`, repositorySearch);
 	});
-	const repositoryPageCount = Math.max(1, Math.ceil(filteredRepositories.length / REPOSITORIES_PER_PAGE));
-	const visibleRepositories = filteredRepositories.slice((repositoryPage - 1) * REPOSITORIES_PER_PAGE, repositoryPage * REPOSITORIES_PER_PAGE);
-	const visibleRepositoriesByOwner = visibleRepositories.reduce((owners, repository) => {
+	const filteredRepositoriesByOwner = filteredRepositories.reduce((owners, repository) => {
 		const entries = owners.get(repository.owner) ?? [];
 		entries.push(repository);
 		owners.set(repository.owner, entries);
@@ -569,7 +641,7 @@ export default function Settings() {
 			<div className="min-h-screen bg-background text-foreground antialiased">
 				<main className="settings-shell">
 					<header className="settings-header">
-						<Button variant="ghost" className="-ml-6" render={<a href="/" />}>
+					<Button variant="ghost" className="-ml-6" render={<Link href="/" prefetch="hover" />}>
 							<ArrowLeft aria-hidden="true" />
 							Dashboard
 						</Button>
@@ -655,7 +727,7 @@ export default function Settings() {
 											<p className="mt-1 text-sm text-muted-foreground">Choose repositories across every account your token can access.</p>
 										</div>
 										<Button className="settings-action" variant="outline" render={<a href={TOKEN_URL} target="_blank" rel="noreferrer noopener" />}>
-											Create multi-org token <ExternalLink aria-hidden="true" />
+											Create token <ExternalLink aria-hidden="true" />
 										</Button>
 									</div>
 									<div className="grid gap-2">
@@ -680,46 +752,43 @@ export default function Settings() {
 										<div className="settings-mobile-stack flex items-center justify-between gap-3">
 											<div>
 												<h3 className="font-semibold">Repositories</h3>
-												<p className="text-sm text-muted-foreground">All selected repositories are searched for authored, review-requested, and reviewed pull requests updated in the last {pullRequestWindowDays} {pullRequestWindowDays === 1 ? 'day' : 'days'}.</p>
+												<p className="text-sm text-muted-foreground">All pull requests in the selected repositories updated in the last {pullRequestWindowDays} {pullRequestWindowDays === 1 ? 'day' : 'days'} are included.</p>
 											</div>
-											<Button type="button" className="settings-action" variant="outline" onClick={() => void loadGithubRepositories(true)} disabled={loadingRepositories}>{loadingRepositories ? 'Loading…' : 'Refresh'}</Button>
+											<Button
+												type="button"
+												className="settings-action"
+												variant="outline"
+												size="icon-lg"
+												aria-label="Refresh repositories"
+												aria-busy={loadingRepositories}
+												title="Refresh repositories"
+												onClick={() => void loadGithubRepositories(true)}
+												disabled={loadingRepositories}
+											>
+												<RefreshCw className={loadingRepositories ? 'animate-spin' : undefined} aria-hidden="true" />
+											</Button>
 										</div>
 										{repositoryCatalog && (
 											<div className="relative">
 												<Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-												<Input aria-label="Search repositories" value={repositorySearch} onChange={event => { setRepositorySearch(event.target.value); setRepositoryPage(1); }} className="h-8 pl-9 text-sm" placeholder="Search repositories" />
+												<Input aria-label="Search repositories" value={repositorySearch} onChange={event => setRepositorySearch(event.target.value)} className="h-8 pl-9 text-sm" placeholder="Search repositories" />
 											</div>
 										)}
 										{repositoryError && <p className="text-sm text-destructive" role="alert">{repositoryError}</p>}
 										{repositoryCatalog && (
 											<div className="repository-picker rounded-lg">
 												<p className="border-b px-4 py-3 text-sm text-muted-foreground">Signed in as <span className="font-medium text-foreground">{repositoryCatalog.viewerLogin}</span> · {repositoryCatalog.repositories.length} accessible repositories</p>
-												{Array.from(visibleRepositoriesByOwner.entries()).map(([owner, repositories]) => {
-													const wildcard = `${owner}/*`;
-													const wildcardSelected = selectedRepositories.includes(wildcard);
-													return (
-														<div key={owner} className="border-b last:border-b-0">
-															<label className="repository-option bg-muted/40 font-medium">
-																<input type="checkbox" checked={wildcardSelected} onChange={() => toggleRepositoryScope(wildcard, owner)} />
-																<span>{owner}/*</span><span className="ml-auto text-xs text-muted-foreground">All repositories</span>
-															</label>
-															{repositories.map(repository => (
-																<label key={repository.id} className="repository-option pl-9">
-																	<input type="checkbox" disabled={wildcardSelected} checked={wildcardSelected || selectedRepositories.includes(repository.fullName)} onChange={() => toggleRepositoryScope(repository.fullName)} />
-																	<span className="truncate">{repository.name}</span>
-																	<span className="ml-auto text-xs text-muted-foreground">{repository.archived ? 'Archived' : repository.private ? 'Private' : 'Public'}</span>
-																</label>
-															))}
-														</div>
-													);
-												})}
+												{Array.from(filteredRepositoriesByOwner.entries()).map(([owner, repositories]) => (
+													<RepositoryOwnerGroup
+														key={owner}
+														owner={owner}
+														repositories={repositories}
+														selectedRepositories={selectedRepositories}
+														searchQuery={repositorySearch}
+														onToggleScope={toggleRepositoryScope}
+													/>
+												))}
 												{filteredRepositories.length === 0 && <p className="p-4 text-sm text-muted-foreground">No matching repositories.</p>}
-											</div>
-										)}
-										{repositoryCatalog && repositoryPageCount > 1 && (
-											<div className="flex items-center justify-between text-sm text-muted-foreground">
-												<span>Page {repositoryPage} of {repositoryPageCount}</span>
-												<div className="flex gap-1"><Button type="button" variant="outline" size="icon-sm" aria-label="Previous repository page" disabled={repositoryPage === 1} onClick={() => setRepositoryPage(page => page - 1)}><ChevronLeft /></Button><Button type="button" variant="outline" size="icon-sm" aria-label="Next repository page" disabled={repositoryPage === repositoryPageCount} onClick={() => setRepositoryPage(page => page + 1)}><ChevronRight /></Button></div>
 											</div>
 										)}
 									</div>

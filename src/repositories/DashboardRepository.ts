@@ -11,16 +11,16 @@ function slugId(value: string): string {
 	return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || randomUUID();
 }
 
-function parseRepositories(settings: DashboardSettings): string[] {
+function parseRepositoryScopes(settings: DashboardSettings): string[] {
 	try {
-		const parsed = JSON.parse(settings.repositories);
+		const parsed = JSON.parse(settings.repositoryScopes);
 		return Array.isArray(parsed) ? parsed.filter(value => typeof value === 'string') : [];
 	} catch {
 		return [];
 	}
 }
 
-function toConfig(settings: DashboardSettings, shortcuts: DashboardShortcut[]): DashboardConfig {
+function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[]): DashboardConfig {
 	const groups = new Map<string, ShortcutGroupConfig>();
 
 	for (const shortcut of shortcuts.sort((a, b) => a.position - b.position)) {
@@ -44,21 +44,19 @@ function toConfig(settings: DashboardSettings, shortcuts: DashboardShortcut[]): 
 		theme: settings.theme === 'dark' || settings.theme === 'system' ? settings.theme : 'light',
 		shortcutLimit: settings.shortcutLimit ?? 8,
 		githubToken: settings.githubToken ?? null,
-		github: { repositories: parseRepositories(settings), windowDays: settings.pullRequestWindowDays ?? 7 },
+		github: { repositoryScopes: parseRepositoryScopes(settings), windowDays: settings.pullRequestWindowDays ?? 7 },
 		shortcutGroups: Array.from(groups.values()),
 	};
 }
 
-export class DashboardConfigRepository {
-	constructor(private readonly db: EntityManager) {}
-
-	async seedFromJsonIfEmpty(configPath: string = variables.DASHBOARD_CONFIG_PATH): Promise<boolean> {
-		const existing = await this.db.findOne(DashboardSettings, { id: 'default' });
+export function createDashboardRepository(db: EntityManager) {
+	async function seedFromJsonIfEmpty(configPath: string = variables.DASHBOARD_CONFIG_PATH): Promise<boolean> {
+		const existing = await db.findOne(DashboardSettings, { id: 'default' });
 		if (existing) return false;
 
 		const config = await loadDashboardConfig(configPath);
 		const now = new Date();
-		const settings = this.db.create(DashboardSettings, {
+		const settings = db.create(DashboardSettings, {
 			id: 'default',
 			displayName: config.displayName,
 			timeZone: config.timeZone,
@@ -67,7 +65,7 @@ export class DashboardConfigRepository {
 			shortcutLimit: config.shortcutLimit ?? 8,
 			pullRequestWindowDays: config.github.windowDays ?? 7,
 			githubToken: config.githubToken ?? null,
-			repositories: JSON.stringify(config.github.repositories),
+			repositoryScopes: JSON.stringify(config.github.repositoryScopes),
 			pullRequestFilters: '{}',
 			createdAt: now,
 			updatedAt: now,
@@ -76,7 +74,7 @@ export class DashboardConfigRepository {
 
 		for (const group of config.shortcutGroups) {
 			for (const [index, shortcut] of group.shortcuts.entries()) {
-				shortcuts.push(this.db.create(DashboardShortcut, {
+				shortcuts.push(db.create(DashboardShortcut, {
 					id: shortcut.id,
 					groupId: group.id,
 					groupLabel: group.label,
@@ -89,18 +87,18 @@ export class DashboardConfigRepository {
 				}));
 			}
 		}
-		await this.db.persist([settings, ...shortcuts]).flush();
+		await db.persist([settings, ...shortcuts]).flush();
 		return true;
 	}
 
-	async getConfig(): Promise<DashboardConfig> {
-		const settings = await this.db.findOneOrFail(DashboardSettings, { id: 'default' });
-		const shortcuts = await this.db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
-		return toConfig(settings, shortcuts);
+	async function getSettings(): Promise<DashboardConfig> {
+		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
+		const shortcuts = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
+		return toSettings(settings, shortcuts);
 	}
 
-	async updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
-		const settings = await this.db.findOneOrFail(DashboardSettings, { id: 'default' });
+	async function updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
+		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
 		settings.displayName = typeof input.displayName === 'string' ? input.displayName.trim() : settings.displayName;
 		settings.timeZone = typeof input.timeZone === 'string' ? input.timeZone : settings.timeZone;
 		settings.timeFormat = input.timeFormat === '12' || input.timeFormat === '24' ? input.timeFormat : settings.timeFormat;
@@ -112,24 +110,24 @@ export class DashboardConfigRepository {
 			? Math.max(1, Math.min(30, input.pullRequestWindowDays))
 			: settings.pullRequestWindowDays;
 		settings.githubToken = input.githubToken !== undefined ? (input.githubToken ? input.githubToken.trim() : null) : settings.githubToken ?? null;
-		await this.db.flush();
-		return this.getConfig();
+		await db.flush();
+		return getSettings();
 	}
 
-	async setRepositories(names: string[]): Promise<string[]> {
-		const repositories = Array.from(new Set(names
+	async function setRepositoryScopes(names: string[]): Promise<string[]> {
+		const repositoryScopes = Array.from(new Set(names
 			.map(name => name.trim())
 			.filter(name => /^[A-Za-z0-9_.-]+\/(?:[A-Za-z0-9_.-]+|\*)$/.test(name))));
-		const settings = await this.db.findOneOrFail(DashboardSettings, { id: 'default' });
-		settings.repositories = JSON.stringify(repositories);
-		await this.db.flush();
-		return repositories;
+		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
+		settings.repositoryScopes = JSON.stringify(repositoryScopes);
+		await db.flush();
+		return repositoryScopes;
 	}
 
-	async importShortcuts(shortcutGroups: ShortcutGroupConfig[]): Promise<DashboardConfig> {
-		return this.db.transactional(async db => {
-			const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
-			const existing = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
+	async function importShortcuts(shortcutGroups: ShortcutGroupConfig[]): Promise<DashboardConfig> {
+		return db.transactional(async transactionalDb => {
+			const settings = await transactionalDb.findOneOrFail(DashboardSettings, { id: 'default' });
+			const existing = await transactionalDb.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
 			const imported = shortcutGroups.flatMap(group => group.shortcuts.map((shortcut, position) => ({
 				id: shortcut.id,
 				groupId: group.id,
@@ -149,11 +147,11 @@ export class DashboardConfigRepository {
 					&& shortcut.icon === candidate.icon
 					&& shortcut.position === candidate.position;
 			});
-			if (unchanged) return toConfig(settings, existing);
+			if (unchanged) return toSettings(settings, existing);
 
-			await db.nativeDelete(DashboardShortcut, {});
+			await transactionalDb.nativeDelete(DashboardShortcut, {});
 			const now = new Date();
-			const shortcuts = imported.map(shortcut => db.create(DashboardShortcut, {
+			const shortcuts = imported.map(shortcut => transactionalDb.create(DashboardShortcut, {
 				id: shortcut.id,
 				groupId: shortcut.groupId,
 				groupLabel: shortcut.groupLabel,
@@ -165,14 +163,14 @@ export class DashboardConfigRepository {
 				updatedAt: now,
 			}));
 
-			if (shortcuts.length > 0) db.persist(shortcuts);
-			await db.flush();
-			return toConfig(settings, shortcuts);
+			if (shortcuts.length > 0) transactionalDb.persist(shortcuts);
+			await transactionalDb.flush();
+			return toSettings(settings, shortcuts);
 		});
 	}
 
-	async updateShortcut(id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
-		const shortcut = await this.db.findOne(DashboardShortcut, { id });
+	async function updateShortcut(id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
+		const shortcut = await db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Shortcut not found', { shortcutId: 'Shortcut not found' });
 		const validated = validateShortcutInput({
 			groupId: shortcut.groupId,
@@ -183,39 +181,39 @@ export class DashboardConfigRepository {
 		shortcut.label = validated.label;
 		shortcut.url = validated.url;
 		shortcut.updatedAt = new Date();
-		await this.db.flush();
+		await db.flush();
 		return { id: shortcut.id, label: shortcut.label, url: shortcut.url, icon: shortcut.icon };
 	}
 
-	async deleteShortcut(id: string): Promise<void> {
-		const shortcut = await this.db.findOne(DashboardShortcut, { id });
+	async function deleteShortcut(id: string): Promise<void> {
+		const shortcut = await db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Shortcut not found', { shortcutId: 'Shortcut not found' });
 		const groupId = shortcut.groupId;
-		this.db.remove(shortcut);
-		const remaining = await this.db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
+		db.remove(shortcut);
+		const remaining = await db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
 		remaining.filter(item => item.id !== id).forEach((item, position) => {
 			item.position = position;
 			item.updatedAt = new Date();
 		});
-		await this.db.flush();
+		await db.flush();
 	}
 
-	async addShortcut(input: AddShortcutInput): Promise<ShortcutConfig> {
+	async function addShortcut(input: AddShortcutInput): Promise<ShortcutConfig> {
 		const validated = validateShortcutInput(input);
-		const existing = await this.db.find(DashboardShortcut, { groupId: validated.groupId }, { orderBy: { position: 'asc' } });
+		const existing = await db.find(DashboardShortcut, { groupId: validated.groupId }, { orderBy: { position: 'asc' } });
 		const id = `${slugId(validated.label)}-${randomUUID().slice(0, 6)}`;
 		const groupLabel = existing[0]?.groupLabel ?? 'Shortcuts';
 		const position = validated.position ?? existing.length;
 		const now = new Date();
-		const shortcut = this.db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, icon: validated.icon, position, createdAt: now, updatedAt: now });
-		await this.db.persist(shortcut).flush();
+		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, icon: validated.icon, position, createdAt: now, updatedAt: now });
+		await db.persist(shortcut).flush();
 		return { id, label: validated.label, url: validated.url, icon: validated.icon as ShortcutIcon };
 	}
 
-	async addShortcuts(inputs: AddShortcutInput[]): Promise<number> {
+	async function addShortcuts(inputs: AddShortcutInput[]): Promise<number> {
 		const validated = inputs.map(validateShortcutInput);
-		return this.db.transactional(async db => {
-			const existing = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
+		return db.transactional(async transactionalDb => {
+			const existing = await transactionalDb.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
 			const knownUrls = new Set(existing.map(shortcut => shortcut.url));
 			const groupLabels = new Map(existing.map(shortcut => [shortcut.groupId, shortcut.groupLabel]));
 			const nextPositions = new Map<string, number>();
@@ -229,7 +227,7 @@ export class DashboardConfigRepository {
 				knownUrls.add(shortcut.url);
 				const position = nextPositions.get(shortcut.groupId) ?? 0;
 				nextPositions.set(shortcut.groupId, position + 1);
-				additions.push(db.create(DashboardShortcut, {
+				additions.push(transactionalDb.create(DashboardShortcut, {
 					id: `${slugId(shortcut.label)}-${randomUUID().slice(0, 6)}`,
 					groupId: shortcut.groupId,
 					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Shortcuts',
@@ -242,15 +240,15 @@ export class DashboardConfigRepository {
 				}));
 			}
 			if (additions.length > 0) {
-				db.persist(additions);
-				await db.flush();
+				transactionalDb.persist(additions);
+				await transactionalDb.flush();
 			}
 			return additions.length;
 		});
 	}
 
-	async reorderShortcuts(groupId: string, shortcutIds: string[]): Promise<ShortcutConfig[]> {
-		const shortcuts = await this.db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
+	async function reorderShortcuts(groupId: string, shortcutIds: string[]): Promise<ShortcutConfig[]> {
+		const shortcuts = await db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
 		const currentIds = new Set(shortcuts.map(shortcut => shortcut.id));
 		const requestedIds = new Set(shortcutIds);
 
@@ -273,10 +271,25 @@ export class DashboardConfigRepository {
 			shortcut.updatedAt = new Date();
 		});
 
-		await this.db.flush();
+		await db.flush();
 		return shortcutIds.map(id => {
 			const shortcut = shortcutsById.get(id)!;
 			return { id: shortcut.id, label: shortcut.label, url: shortcut.url, icon: shortcut.icon };
 		});
 	}
+
+	return {
+		seedFromJsonIfEmpty,
+		getSettings,
+		updateSettings,
+		setRepositoryScopes,
+		importShortcuts,
+		updateShortcut,
+		deleteShortcut,
+		addShortcut,
+		addShortcuts,
+		reorderShortcuts,
+	};
 }
+
+export type DashboardRepository = ReturnType<typeof createDashboardRepository>;

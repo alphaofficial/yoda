@@ -1,5 +1,4 @@
 export type IntegrationState = 'ok' | 'error' | 'unconfigured';
-export type ReviewState = 'approved' | 'changes_requested' | 'review_required' | 'draft';
 export type TimeFormat = '12' | '24';
 export type ThemePreference = 'light' | 'dark' | 'system';
 
@@ -36,7 +35,7 @@ export interface PullRequestItem {
 	number: number;
 	title: string;
 	author: string;
-	reviewState: ReviewState;
+	involved: boolean;
 	state: 'open' | 'draft' | 'merged' | 'closed';
 	createdAt: string;
 	updatedAt: string;
@@ -58,6 +57,7 @@ export interface GitHubRepositoryCatalog {
 	viewerLogin: string;
 	repositories: GitHubRepository[];
 	defaultScopes: string[];
+	teams: string[];
 }
 
 export interface ShortcutGroup {
@@ -96,7 +96,7 @@ export interface DashboardConfig {
 	shortcutLimit?: number;
 	githubToken?: string | null;
 	github: {
-		repositories: string[];
+		repositoryScopes: string[];
 		windowDays: number;
 	};
 	shortcutGroups: ShortcutGroupConfig[];

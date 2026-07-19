@@ -1,26 +1,22 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import request from 'supertest';
 import express from 'express';
-import { dashboardIndex, createShortcut } from '@/controllers/dashboard';
+import { dashboardIndex, createShortcut, refreshPullRequests } from '@/controllers/dashboard';
 import { ShortcutValidationError } from '@/types/dashboard';
 import type { DashboardResponse } from '@/types/dashboard';
 
 const routeMocks = vi.hoisted(() => ({
-	createDashboardService: vi.fn(),
+	get: vi.fn(),
+	refreshPullRequests: vi.fn(),
 	addShortcut: vi.fn(),
-	getConfig: vi.fn(),
-	invalidateDashboardSnapshot: vi.fn(),
+	getSettings: vi.fn(),
 }));
 
 vi.mock('@/core/dashboard', () => ({
-	createDashboardService: routeMocks.createDashboardService,
-	invalidateDashboardSnapshot: routeMocks.invalidateDashboardSnapshot,
-}));
-
-vi.mock('@/repositories/DashboardConfigRepository', () => ({
-	DashboardConfigRepository: class {
-		addShortcut = routeMocks.addShortcut;
-		getConfig = routeMocks.getConfig;
+	dashboard: {
+		get: routeMocks.get,
+		refreshPullRequests: routeMocks.refreshPullRequests,
+		addShortcut: routeMocks.addShortcut,
 	},
 }));
 
@@ -59,6 +55,7 @@ function createTestApp() {
 	});
 
 	app.get('/', dashboardIndex);
+	app.post('/pull-requests/refresh', refreshPullRequests);
 	app.post('/settings/shortcuts', createShortcut);
 	app.use((err: Error, _req: express.Request, _res: express.Response, _next: express.NextFunction) => {
 		throw err;
@@ -68,9 +65,6 @@ function createTestApp() {
 
 describe('Dashboard Routes', () => {
 	let app: express.Application;
-	const mockDashboardService = {
-		getSnapshot: vi.fn(),
-	};
 
 	const sampleDashboard: DashboardResponse = {
 		generatedAt: '2024-06-15T12:00:00Z',
@@ -88,7 +82,7 @@ describe('Dashboard Routes', () => {
 					number: 1,
 					title: 'Test PR',
 					author: 'testuser',
-					reviewState: 'review_required',
+					involved: true,
 					state: 'open',
 					createdAt: '2024-06-10T00:00:00Z',
 					updatedAt: '2024-06-15T10:00:00Z',
@@ -119,20 +113,20 @@ describe('Dashboard Routes', () => {
 	beforeEach(() => {
 		app = createTestApp();
 		vi.clearAllMocks();
-		(mockDashboardService.getSnapshot as ReturnType<typeof vi.fn>).mockResolvedValue(sampleDashboard);
-		routeMocks.createDashboardService.mockReturnValue(mockDashboardService);
+		routeMocks.get.mockResolvedValue(sampleDashboard);
+		routeMocks.refreshPullRequests.mockResolvedValue(sampleDashboard);
 		routeMocks.addShortcut.mockResolvedValue({
 			id: 'new-shortcut',
 			label: 'New Shortcut',
 			url: 'https://example.com',
 			icon: 'link',
 		});
-		routeMocks.getConfig.mockResolvedValue({
+		routeMocks.getSettings.mockResolvedValue({
 			displayName: 'Test User',
 			timeZone: 'Europe/London',
 			shortcutLimit: 8,
 			githubToken: 'test-token',
-			github: { repositories: ['owner/repo'], windowDays: 7 },
+			github: { repositoryScopes: ['owner/repo'], windowDays: 7 },
 			shortcutGroups: sampleDashboard.shortcutGroups,
 		});
 	});
@@ -146,7 +140,19 @@ describe('Dashboard Routes', () => {
 			const res = await request(app).get('/');
 
 			expect(res.status).toBe(200);
-			expect(mockDashboardService.getSnapshot).toHaveBeenCalledTimes(1);
+			expect(routeMocks.get).toHaveBeenCalledTimes(1);
+		});
+
+		it('passes the persisted pull request filter to the initial page', async () => {
+			const filterState = JSON.stringify({
+				filters: [{ filter: 'status', value: 'merged', operator: 'AND' }],
+				inputValue: 'dashboard',
+			});
+			const res = await request(app)
+				.get('/')
+				.set('Cookie', `yoda_pull_request_filters=${encodeURIComponent(filterState)}`);
+
+			expect(res.body.props.pullRequestFilterState).toBe(filterState);
 		});
 
 		it('returns 404 for removed starter routes', async () => {
@@ -156,6 +162,16 @@ describe('Dashboard Routes', () => {
 				const res = await request(app).get(path);
 				expect(res.status).toBe(404);
 			}
+		});
+	});
+
+	describe('POST /pull-requests/refresh', () => {
+		it('forces a refresh before redirecting to the dashboard', async () => {
+			const res = await request(app).post('/pull-requests/refresh');
+
+			expect(res.status).toBe(303);
+			expect(res.headers.location).toBe('/');
+			expect(routeMocks.refreshPullRequests).toHaveBeenCalledTimes(1);
 		});
 	});
 
@@ -175,7 +191,7 @@ describe('Dashboard Routes', () => {
 
 			expect(res.status).toBe(303);
 			expect(res.headers.location).toBe('/settings?section=shortcuts');
-			expect(routeMocks.addShortcut).toHaveBeenCalledWith(input);
+			expect(routeMocks.addShortcut).toHaveBeenCalledWith(expect.any(Object), input);
 		});
 
 		it('redirects validation failures to shortcut settings', async () => {

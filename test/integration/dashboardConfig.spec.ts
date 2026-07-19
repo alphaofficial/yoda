@@ -18,7 +18,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test User',
 				timeZone: 'America/New_York',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			const result = validateDashboardConfig(config);
@@ -33,7 +33,7 @@ describe('dashboard config validation', () => {
 				displayName: 'Test User',
 				timeZone: 'Europe/London',
 				timeFormat: '24',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 
@@ -47,7 +47,7 @@ describe('dashboard config validation', () => {
 				displayName: 'Albert',
 				timeZone: 'Europe/London',
 				github: {
-					repositories: ['owner/repo1', 'owner/repo2'],
+					repositoryScopes: ['owner/repo1', 'owner/repo2'],
 					windowDays: 14,
 				},
 				shortcutGroups: [
@@ -89,7 +89,7 @@ describe('dashboard config validation', () => {
 				const config = {
 					displayName: 'Test',
 					timeZone: 'UTC',
-					github: { repositories: [] },
+					github: { repositoryScopes: [] },
 					shortcutGroups: [
 						{
 							id: 'group',
@@ -108,7 +108,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'a'.repeat(60),
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).not.toThrow();
@@ -118,7 +118,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -138,7 +138,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -154,7 +154,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -172,7 +172,7 @@ describe('dashboard config validation', () => {
 				const config = {
 					displayName: 'Test',
 					timeZone: 'UTC',
-					github: { repositories: [] },
+					github: { repositoryScopes: [] },
 					shortcutGroups: [
 						{
 							id,
@@ -201,7 +201,7 @@ describe('dashboard config validation', () => {
 		it('rejects missing displayName', () => {
 			const config = {
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('displayName is required');
@@ -211,7 +211,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: '',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -221,7 +221,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: '   ',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -231,7 +231,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'a'.repeat(61),
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow(DashboardConfigError);
@@ -240,7 +240,7 @@ describe('dashboard config validation', () => {
 		it('rejects missing timeZone', () => {
 			const config = {
 				displayName: 'Test',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('timeZone is required');
@@ -250,7 +250,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'Invalid/TimeZone',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('Invalid time zone');
@@ -261,21 +261,21 @@ describe('dashboard config validation', () => {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				timeFormat: 'twenty-four',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [],
 			};
 
 			expect(() => validateDashboardConfig(config)).toThrow('timeFormat must be 12 or 24');
 		});
 
-		it('rejects missing github.repositories', () => {
+		it('rejects missing github.repositoryScopes', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
 				github: {},
 				shortcutGroups: [],
 			};
-			expect(() => validateDashboardConfig(config)).toThrow('github.repositories must be an array');
+			expect(() => validateDashboardConfig(config)).toThrow('github.repositoryScopes must be an array');
 		});
 
 		it('rejects invalid repository format', () => {
@@ -284,7 +284,7 @@ describe('dashboard config validation', () => {
 				const config = {
 					displayName: 'Test',
 					timeZone: 'UTC',
-					github: { repositories: [repo] },
+					github: { repositoryScopes: [repo] },
 					shortcutGroups: [],
 				};
 				expect(() => validateDashboardConfig(config)).toThrow('Invalid repository format');
@@ -295,7 +295,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: ['owner/repo', 'owner/repo'] },
+				github: { repositoryScopes: ['owner/repo', 'owner/repo'] },
 				shortcutGroups: [],
 			};
 			expect(() => validateDashboardConfig(config)).toThrow('Duplicate repository');
@@ -309,7 +309,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'Invalid-ID',
@@ -325,7 +325,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: '-invalid',
@@ -341,7 +341,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{ id: 'group', label: 'Group 1', shortcuts: [] },
 					{ id: 'group', label: 'Group 2', shortcuts: [] },
@@ -354,7 +354,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -372,7 +372,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -391,7 +391,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'group',
@@ -411,7 +411,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -427,7 +427,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -443,7 +443,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -459,7 +459,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -475,7 +475,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -491,7 +491,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -507,7 +507,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -523,7 +523,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -541,7 +541,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -557,7 +557,7 @@ describe('dashboard config validation', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -566,14 +566,14 @@ describe('dashboard config validation', () => {
 					},
 				],
 			};
-			expect(() => validateDashboardConfig(config)).toThrow('Group label must be 1–60 characters');
+			expect(() => validateDashboardConfig(config)).toThrow('Group label must be 1-60 characters');
 		});
 
 		it('rejects empty shortcut label', () => {
 			const config = {
 				displayName: 'Test',
 				timeZone: 'UTC',
-				github: { repositories: [] },
+				github: { repositoryScopes: [] },
 				shortcutGroups: [
 					{
 						id: 'g',
@@ -605,7 +605,7 @@ describe('shortcut persistence', () => {
 	const validConfig = {
 		displayName: 'Test',
 		timeZone: 'UTC',
-		github: { repositories: [] },
+		github: { repositoryScopes: [] },
 		shortcutGroups: [
 			{
 				id: 'group1',

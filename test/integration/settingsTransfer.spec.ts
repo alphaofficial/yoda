@@ -4,21 +4,15 @@ import request from 'supertest';
 import { exportShortcuts, importShortcuts } from '@/controllers/settings';
 
 const settingsMocks = vi.hoisted(() => ({
-	getConfig: vi.fn(),
+	getSettings: vi.fn(),
 	importShortcuts: vi.fn(),
-	invalidateDashboardSnapshot: vi.fn(),
-}));
-
-vi.mock('@/repositories/DashboardConfigRepository', () => ({
-	DashboardConfigRepository: class {
-		getConfig = settingsMocks.getConfig;
-		importShortcuts = settingsMocks.importShortcuts;
-	},
 }));
 
 vi.mock('@/core/dashboard', () => ({
-	invalidateDashboardSnapshot: settingsMocks.invalidateDashboardSnapshot,
-	primeDashboardSnapshot: vi.fn(),
+	dashboard: {
+		settings: settingsMocks.getSettings,
+		importShortcuts: settingsMocks.importShortcuts,
+	},
 }));
 
 vi.mock('@/config/variables', () => ({
@@ -40,7 +34,7 @@ const config = {
 	timeZone: 'Europe/London',
 	shortcutLimit: 8,
 	githubToken: 'secret-token',
-	github: { repositories: ['owner/repository'], windowDays: 7 },
+	github: { repositoryScopes: ['owner/repository'], windowDays: 7 },
 	shortcutGroups,
 };
 
@@ -60,7 +54,7 @@ function createApp() {
 describe('shortcut settings transfer routes', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
-		settingsMocks.getConfig.mockResolvedValue(config);
+		settingsMocks.getSettings.mockResolvedValue(config);
 		settingsMocks.importShortcuts.mockResolvedValue(config);
 	});
 
@@ -75,7 +69,7 @@ describe('shortcut settings transfer routes', () => {
 		expect(JSON.stringify(response.body)).not.toContain('repositories');
 	});
 
-	it('imports shortcut groups and invalidates the dashboard snapshot', async () => {
+	it('imports shortcut groups', async () => {
 		const payload = { version: 1, exportedAt: '2026-07-18T12:00:00.000Z', shortcutGroups };
 		const response = await request(createApp())
 			.post('/settings/shortcuts/import')
@@ -83,8 +77,7 @@ describe('shortcut settings transfer routes', () => {
 
 		expect(response.status).toBe(303);
 		expect(response.headers.location).toBe('/settings?section=shortcuts');
-		expect(settingsMocks.importShortcuts).toHaveBeenCalledWith(shortcutGroups);
-		expect(settingsMocks.invalidateDashboardSnapshot).toHaveBeenCalledWith(config);
+		expect(settingsMocks.importShortcuts).toHaveBeenCalledWith(expect.any(Object), shortcutGroups);
 	});
 
 	it('rejects an invalid shortcut export', async () => {

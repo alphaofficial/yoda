@@ -23,12 +23,12 @@ export async function applyInertia(req: Request, res: Response, next: NextFuncti
 	req.inertia = inertia;
 
 	res.render = ((view: string, props: Record<string, any> = {}) => {
-		const { _theme = 'light', ...pageProps } = props;
+		const { theme = 'light', ...pageProps } = props;
 		const page = inertia.render(req, res, view, pageProps);
 
 		if (res.headersSent) return;
 
-		renderHtml(page, props._title, props._head, _theme)
+		renderHtml(page, props._title, props._head, theme)
 			.then(html => res.send(html))
 			.catch(next);
 	}) as any;

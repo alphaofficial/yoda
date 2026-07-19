@@ -55,7 +55,7 @@ env.oneOf = <T extends string>(key: string, values: readonly T[], fallback: T): 
 const variables = {
 	NODE_ENV: env.oneOf('NODE_ENV', ['development', 'production', 'test'] as const, 'development'),
 	PORT: env.int('PORT', 3008),
-	APP_NAME: env('APP_NAME', 'The Boring Architecture')!,
+	APP_NAME: env('APP_NAME', 'Yoda')!,
 	APP_URL: env('APP_URL', 'http://localhost:3000')!,
 	TRUST_PROXY: env('TRUST_PROXY', 'loopback')!,
 	APP_KEY: env('APP_KEY'),
@@ -79,7 +79,7 @@ const variables = {
 	DASHBOARD_CONFIG_PATH: env('DASHBOARD_CONFIG_PATH', 'config/dashboard.json')!,
 	DASHBOARD_CACHE_TTL_SECONDS: (() => {
 		const raw = envValue('DASHBOARD_CACHE_TTL_SECONDS');
-		const value = raw ? Number(raw) : 60;
+		const value = raw ? Number(raw) : 180;
 		if (Number.isNaN(value) || !Number.isInteger(value) || value < 5 || value > 3600) {
 			throw new Error('DASHBOARD_CACHE_TTL_SECONDS must be an integer from 5 to 3600');
 		}

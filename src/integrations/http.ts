@@ -14,7 +14,6 @@ export class IntegrationRequestError extends Error {
 
 export interface HttpOptions {
 	headers?: Record<string, string>;
-	provider: string;
 }
 
 export interface HttpPostOptions extends HttpOptions {
@@ -22,24 +21,21 @@ export interface HttpPostOptions extends HttpOptions {
 }
 
 export interface HttpClient {
-	get<T>(url: string, options: HttpOptions): Promise<T>;
-	post<T>(url: string, options: HttpPostOptions): Promise<T>;
+	get<T>(path: string, options?: HttpOptions): Promise<T>;
+	post<T>(path: string, options?: HttpPostOptions): Promise<T>;
 }
 
-interface HttpClientOptions {
-	transport?: typeof fetch;
-	sleep?: (milliseconds: number) => Promise<void>;
-}
-
-export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
-	const transport = options.transport ?? fetch;
-	const sleep = options.sleep ?? ((milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds)));
+export function createHttpClient(baseUrl: string): HttpClient {
+	const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+	const provider = new URL(normalizedBaseUrl).hostname;
+	const sleep = (milliseconds: number) => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 	async function execute<T>(
-		url: string,
+		path: string,
 		method: 'GET' | 'POST',
-		{ headers = {}, body, provider }: HttpPostOptions,
+		{ headers = {}, body }: HttpPostOptions = {},
 	): Promise<T> {
+		const url = new URL(path.replace(/^\//, ''), normalizedBaseUrl).toString();
 		const timeoutMs = variables.DASHBOARD_REQUEST_TIMEOUT_MS;
 		const retryCount = variables.DASHBOARD_RETRY_COUNT;
 
@@ -48,7 +44,7 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
 			const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
 			try {
-				const response = await transport(url, {
+				const response = await fetch(url, {
 					method,
 					headers,
 					body,
@@ -128,5 +124,3 @@ export function createHttpClient(options: HttpClientOptions = {}): HttpClient {
 		post: (url, requestOptions) => execute(url, 'POST', requestOptions),
 	};
 }
-
-export const httpClient = createHttpClient();

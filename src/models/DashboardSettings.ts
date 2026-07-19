@@ -7,7 +7,7 @@ export class DashboardSettings {
 	timeFormat!: '12' | '24';
 	theme!: 'light' | 'dark' | 'system';
 	githubToken?: string | null;
-	repositories!: string;
+	repositoryScopes!: string;
 	pullRequestFilters!: string;
 	createdAt: Date = new Date();
 	updatedAt: Date = new Date();

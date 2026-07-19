@@ -75,7 +75,7 @@ function validateLabel(label: string, fieldName = 'Label'): void {
 	}
 	if (trimmed.length > LABEL_MAX_LENGTH) {
 		throw new DashboardConfigError(
-			`${fieldName} must be 1–${LABEL_MAX_LENGTH} characters`,
+			`${fieldName} must be 1-${LABEL_MAX_LENGTH} characters`,
 			{ label }
 		);
 	}
@@ -170,12 +170,12 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 		throw new DashboardConfigError('github configuration is required');
 	}
 	const gh = github as Record<string, unknown>;
-	const repoList = gh.repositories;
-	if (!Array.isArray(repoList)) {
-		throw new DashboardConfigError('github.repositories must be an array');
+	const repositoryScopes = gh.repositoryScopes;
+	if (!Array.isArray(repositoryScopes)) {
+		throw new DashboardConfigError('github.repositoryScopes must be an array');
 	}
 	const seenRepos = new Set<string>();
-	for (const repo of repoList) {
+	for (const repo of repositoryScopes) {
 		if (typeof repo !== 'string') {
 			throw new DashboardConfigError('Repository must be a string');
 		}
@@ -258,7 +258,7 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 		shortcutLimit: typeof c.shortcutLimit === 'number' && Number.isInteger(c.shortcutLimit) && c.shortcutLimit >= 1 && c.shortcutLimit <= 50 ? c.shortcutLimit : 8,
 		githubToken: typeof c.githubToken === 'string' ? c.githubToken : null,
 		github: {
-			repositories: repoList as string[],
+			repositoryScopes: repositoryScopes as string[],
 			windowDays: typeof gh.windowDays === 'number' && Number.isInteger(gh.windowDays) && gh.windowDays >= 1 && gh.windowDays <= 30 ? gh.windowDays : 7,
 		},
 		shortcutGroups: shortcutGroups as ShortcutGroupConfig[],
@@ -289,7 +289,7 @@ export function validateShortcutSettingsImport(input: unknown): ShortcutGroupCon
 	const config = validateDashboardConfig({
 		displayName: 'Imported shortcuts',
 		timeZone: 'UTC',
-		github: { repositories: [] },
+		github: { repositoryScopes: [] },
 		shortcutGroups: envelope.shortcutGroups,
 	});
 	return config.shortcutGroups;

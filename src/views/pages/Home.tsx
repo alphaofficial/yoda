@@ -8,11 +8,12 @@ import type { PageProps as InertiaPageProps } from '@inertiajs/core';
 interface PageProps extends InertiaPageProps {
 	applicationName: string;
 	dashboard: DashboardResponse;
+	pullRequestFilterState: string | null;
 }
 
 export default function Home() {
 	const { props } = usePage<PageProps>();
-	const { applicationName, dashboard } = props;
+	const { applicationName, dashboard, pullRequestFilterState } = props;
 
 	return (
 		<>
@@ -26,7 +27,7 @@ export default function Home() {
 							className="dashboard-main"
 							aria-label="Dashboard content"
 						>
-							<PullRequestPanel pullRequests={dashboard.pullRequests} />
+							<PullRequestPanel pullRequests={dashboard.pullRequests} persistedFilterState={pullRequestFilterState} />
 						</section>
 						<aside
 							className="dashboard-sidebar"

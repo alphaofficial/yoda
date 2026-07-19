@@ -1,31 +1,45 @@
-import { Cache } from '@/primitives/cache';
-import { PinoLogger } from '@/logger/pinoLogger';
-import { createGitHubClient } from '@/integrations/github';
-import { httpClient, type HttpClient } from '@/integrations/http';
+import { createHash } from 'crypto';
+import type { EntityManager } from '@mikro-orm/core';
 import variables from '@/config/variables';
-import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
+import { createGitHubClient, discoverGitHubRepositories } from '@/integrations/github';
+import { PinoLogger } from '@/logger/pinoLogger';
+import { Cache } from '@/primitives/cache';
+import { createDashboardRepository } from '@/repositories/DashboardRepository';
 import type {
+	AddShortcutInput,
+	DashboardConfig,
 	DashboardResponse,
+	GitHubRepositoryCatalog,
+	IntegrationHealth,
 	PullRequestItem,
+	ShortcutGroupConfig,
 	ShortcutGroup,
 	ShortcutIcon,
-	IntegrationHealth,
-	DashboardConfig,
 } from '@/types/dashboard';
 
-const FRESH_CACHE_KEY = 'dashboard:fresh';
-const LAST_SUCCESS_CACHE_KEY = 'dashboard:last-success';
+const PULL_REQUEST_CACHE_KEY = 'github:pull-requests';
+const REPOSITORY_CATALOG_CACHE_KEY = 'github:repository-catalog';
+
+interface CachedPullRequests {
+	configurationHash: string;
+	fetchedAt: string;
+	items: PullRequestItem[];
+	error: string | null;
+}
+
+interface CachedRepositoryCatalog {
+	tokenFingerprint: string;
+	catalog: GitHubRepositoryCatalog;
+}
 
 function calculatePrCounts(items: PullRequestItem[]): { open: number; draft: number; merged: number; closed: number } {
 	const counts = { open: 0, draft: 0, merged: 0, closed: 0 };
-	for (const item of items) {
-		counts[item.state]++;
-	}
+	for (const item of items) counts[item.state]++;
 	return counts;
 }
 
-function shortcutGroupsFromConfig(config: DashboardConfig): ShortcutGroup[] {
-	return config.shortcutGroups.map(group => ({
+function shortcutGroupsFromSettings(settings: DashboardConfig): ShortcutGroup[] {
+	return settings.shortcutGroups.map(group => ({
 		id: group.id,
 		label: group.label,
 		shortcuts: group.shortcuts.map(shortcut => ({
@@ -37,234 +51,186 @@ function shortcutGroupsFromConfig(config: DashboardConfig): ShortcutGroup[] {
 	}));
 }
 
-function localSnapshot(config: DashboardConfig, prior?: DashboardResponse): DashboardResponse {
-	const now = new Date().toISOString();
-	const githubTokenConfigured = !!config.githubToken;
+function configurationHash(settings: DashboardConfig): string {
+	return createHash('sha256')
+		.update(JSON.stringify({
+			token: settings.githubToken,
+			repositoryScopes: settings.github.repositoryScopes,
+			windowDays: settings.github.windowDays,
+		}))
+		.digest('hex');
+}
+
+function tokenFingerprint(token: string): string {
+	return createHash('sha256').update(token).digest('hex');
+}
+
+async function getGitHubRepositoryCatalog(token: string, refresh: boolean): Promise<GitHubRepositoryCatalog> {
+	const fingerprint = tokenFingerprint(token);
+	if (!refresh) {
+		const cached = await Cache.get<CachedRepositoryCatalog>(REPOSITORY_CATALOG_CACHE_KEY);
+		if (cached?.tokenFingerprint === fingerprint && Array.isArray(cached.catalog.teams)) return cached.catalog;
+	}
+
+	const catalog = await discoverGitHubRepositories(token);
+	await Cache.set(REPOSITORY_CATALOG_CACHE_KEY, {
+		tokenFingerprint: fingerprint,
+		catalog,
+	} satisfies CachedRepositoryCatalog, variables.GITHUB_REPOSITORY_CACHE_TTL_SECONDS);
+	return catalog;
+}
+
+async function fetchPullRequests(settings: DashboardConfig, currentDateTime: Date): Promise<CachedPullRequests> {
+	const hash = configurationHash(settings);
+	try {
+		const repositoryCatalog = await getGitHubRepositoryCatalog(settings.githubToken!, false);
+		const result = await createGitHubClient({
+			token: settings.githubToken!,
+			repositoryScopes: settings.github.repositoryScopes,
+			windowDays: settings.github.windowDays ?? 7,
+			requestedAt: currentDateTime,
+			repositoryCatalog,
+		}).fetchPullRequests();
+		return {
+			configurationHash: hash,
+			fetchedAt: currentDateTime.toISOString(),
+			items: result.items,
+			error: null,
+		};
+	} catch (error) {
+		const message = (error instanceof Error ? error.message : 'Unknown error').slice(0, 200);
+		PinoLogger.warn({ scope: 'dashboard', message: 'GitHub integration failed', error: message });
+		return {
+			configurationHash: hash,
+			fetchedAt: currentDateTime.toISOString(),
+			items: [],
+			error: message,
+		};
+	}
+}
+
+async function getPullRequests(settings: DashboardConfig, currentDateTime: Date, forceRefresh: boolean): Promise<CachedPullRequests | null> {
+	if (!settings.githubToken) return null;
+
+	if (!forceRefresh) {
+		const cached = await Cache.get<CachedPullRequests>(PULL_REQUEST_CACHE_KEY);
+		if (cached?.configurationHash === configurationHash(settings)
+			&& cached.items.every(item => typeof item.involved === 'boolean')) return cached;
+	}
+
+	const fresh = await fetchPullRequests(settings, currentDateTime);
+	await Cache.set(PULL_REQUEST_CACHE_KEY, fresh, variables.DASHBOARD_CACHE_TTL_SECONDS);
+	return fresh;
+}
+
+function buildDashboard(settings: DashboardConfig, pullRequestData: CachedPullRequests | null, currentDateTime: Date): DashboardResponse {
+	let githubHealth: IntegrationHealth;
+	if (!settings.githubToken) {
+		githubHealth = {
+			state: 'unconfigured',
+			lastSuccessAt: null,
+			message: 'Add github configuration to enable this integration.',
+		};
+	} else if (pullRequestData?.error) {
+		githubHealth = {
+			state: 'error',
+			lastSuccessAt: null,
+			message: pullRequestData.error,
+		};
+	} else {
+		githubHealth = {
+			state: 'ok',
+			lastSuccessAt: pullRequestData?.fetchedAt ?? null,
+			message: null,
+		};
+	}
+
+	const items = pullRequestData?.items ?? [];
 	return {
-		generatedAt: now,
-		lastRefreshAt: prior?.lastRefreshAt ?? null,
-		stale: true,
-		timeZone: config.timeZone,
-		timeFormat: config.timeFormat ?? '12',
-		theme: config.theme ?? 'light',
-		displayName: config.displayName,
-		shortcutLimit: config.shortcutLimit ?? 8,
-		githubTokenConfigured,
+		generatedAt: currentDateTime.toISOString(),
+		lastRefreshAt: pullRequestData?.fetchedAt ?? null,
+		stale: githubHealth.state === 'error',
+		timeZone: settings.timeZone,
+		timeFormat: settings.timeFormat ?? '12',
+		theme: settings.theme ?? 'light',
+		displayName: settings.displayName,
+		shortcutLimit: settings.shortcutLimit ?? 8,
+		githubTokenConfigured: !!settings.githubToken,
 		pullRequests: {
-			windowDays: config.github.windowDays ?? 7,
-			counts: prior?.pullRequests.counts ?? { open: 0, draft: 0, merged: 0, closed: 0 },
-			items: prior?.pullRequests.items ?? [],
+			windowDays: settings.github.windowDays ?? 7,
+			counts: calculatePrCounts(items),
+			items,
 		},
-		shortcutGroups: shortcutGroupsFromConfig(config),
-		integrations: {
-			github: githubTokenConfigured
-				? prior?.integrations.github ?? { state: 'ok', lastSuccessAt: null, message: 'Refreshing GitHub data.' }
-				: { state: 'unconfigured', lastSuccessAt: null, message: 'Add github configuration to enable this integration.' },
-		},
+		shortcutGroups: shortcutGroupsFromSettings(settings),
+		integrations: { github: githubHealth },
 	};
 }
 
-export async function primeDashboardSnapshot(config: DashboardConfig): Promise<void> {
-	const prior = await Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
-	if (!prior) await Cache.set(LAST_SUCCESS_CACHE_KEY, localSnapshot(config));
+async function loadDashboard(db: EntityManager, currentDateTime: Date, forceRefresh: boolean): Promise<DashboardResponse> {
+	const settings = await createDashboardRepository(db).getSettings();
+	const pullRequests = await getPullRequests(settings, currentDateTime, forceRefresh);
+	return buildDashboard(settings, pullRequests, currentDateTime);
 }
 
-export async function invalidateDashboardSnapshot(config: DashboardConfig): Promise<void> {
-	const prior = await Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
-	await Cache.set(LAST_SUCCESS_CACHE_KEY, localSnapshot(config, prior));
-	await Cache.delete(FRESH_CACHE_KEY);
+async function get(db: EntityManager, currentDateTime: Date): Promise<DashboardResponse> {
+	return loadDashboard(db, currentDateTime, false);
 }
 
-export interface GitHubClient {
-	fetchPullRequests(): Promise<{ items: PullRequestItem[]; unconfigured: boolean }>;
+async function refreshPullRequests(db: EntityManager, currentDateTime: Date): Promise<DashboardResponse> {
+	return loadDashboard(db, currentDateTime, true);
 }
 
-export type GitHubClientFactory = (options: {
-	token: string;
-	repositories: string[];
-	windowDays?: number;
-	httpClient?: HttpClient;
-	now?: Date;
-}) => GitHubClient;
-
-export interface DashboardService {
-	getSnapshot(): Promise<DashboardResponse>;
+async function settings(db: EntityManager): Promise<DashboardConfig> {
+	return createDashboardRepository(db).getSettings();
 }
 
-export interface DashboardServiceOptions {
-	configRepository: DashboardConfigRepository;
-	httpClient?: HttpClient;
-	now?: Date;
-	githubClientFactory?: GitHubClientFactory;
+async function githubRepositories(db: EntityManager, refresh: boolean): Promise<GitHubRepositoryCatalog | null> {
+	const config = await createDashboardRepository(db).getSettings();
+	return config.githubToken ? getGitHubRepositoryCatalog(config.githubToken, refresh) : null;
 }
 
-interface GitHubFetchResult {
-	items: PullRequestItem[];
-	error: string | null;
+async function updateSettings(db: EntityManager, input: Parameters<ReturnType<typeof createDashboardRepository>['updateSettings']>[0] & { repositoryScopes?: string[] }): Promise<DashboardConfig> {
+	const repository = createDashboardRepository(db);
+	const updated = await repository.updateSettings(input);
+	if (!Array.isArray(input.repositoryScopes)) return updated;
+	await repository.setRepositoryScopes(input.repositoryScopes);
+	return repository.getSettings();
 }
 
-export function createDashboardService(options: DashboardServiceOptions): DashboardService {
-	const {
-		configRepository,
-		now = new Date(),
-		githubClientFactory = createGitHubClient,
-	} = options;
-	const apiClient = options.httpClient ?? httpClient;
-
-	let refreshPromise: Promise<DashboardResponse> | null = null;
-
-	async function getFreshCache(): Promise<DashboardResponse | undefined> {
-		return Cache.get<DashboardResponse>(FRESH_CACHE_KEY);
-	}
-
-	async function getLastSuccessCache(): Promise<DashboardResponse | undefined> {
-		return Cache.get<DashboardResponse>(LAST_SUCCESS_CACHE_KEY);
-	}
-
-	async function setFreshCache(value: DashboardResponse): Promise<void> {
-		await Cache.set(FRESH_CACHE_KEY, value, variables.DASHBOARD_CACHE_TTL_SECONDS);
-	}
-
-	async function setLastSuccessCache(value: DashboardResponse): Promise<void> {
-		await Cache.set(LAST_SUCCESS_CACHE_KEY, value);
-	}
-
-	async function fetchGitHubPullRequests(config: DashboardConfig, requestedAt: Date): Promise<GitHubFetchResult> {
-		if (!config.githubToken) return { items: [], error: null };
-
-		try {
-			const githubClient = githubClientFactory({
-				token: config.githubToken,
-				repositories: config.github.repositories,
-				windowDays: config.github.windowDays ?? 7,
-				httpClient: apiClient,
-				now: requestedAt,
-			});
-			const result = await githubClient.fetchPullRequests();
-			return { items: result.items, error: null };
-		} catch (error) {
-			const message = error instanceof Error ? error.message : 'Unknown error';
-			return { items: [], error: message.slice(0, 200) };
-		}
-	}
-
-	async function refresh(config: DashboardConfig, refreshStartTime: Date): Promise<DashboardResponse> {
-		const priorSnapshot = await getLastSuccessCache();
-
-		const githubToken = config.githubToken;
-		const githubConfigured = !!githubToken;
-		const pullRequestWindowDays = config.github.windowDays ?? 7;
-		const githubResult = await fetchGitHubPullRequests(config, refreshStartTime);
-
-		if (githubResult.error) {
-			PinoLogger.warn({
-				scope: 'dashboard',
-				message: 'GitHub integration failed',
-				error: githubResult.error,
-			});
-		}
-
-		let githubHealth: IntegrationHealth;
-
-		if (!githubConfigured) {
-			githubHealth = {
-				state: 'unconfigured',
-				lastSuccessAt: null,
-				message: 'Add github configuration to enable this integration.',
-			};
-		} else if (githubResult.error) {
-			const priorHealth = priorSnapshot?.integrations.github;
-			githubHealth = {
-				state: 'error',
-				lastSuccessAt: priorHealth?.lastSuccessAt ?? null,
-				message: githubResult.error,
-			};
-		} else {
-			githubHealth = {
-				state: 'ok',
-				lastSuccessAt: refreshStartTime.toISOString(),
-				message: null,
-			};
-		}
-
-		const githubItems = githubResult.items;
-
-		const pullRequests = {
-			windowDays: pullRequestWindowDays,
-			counts: calculatePrCounts(githubItems),
-			items: githubItems,
-		};
-
-		const shortcutGroups = shortcutGroupsFromConfig(config);
-
-		const stale = githubHealth.state === 'error';
-
-		const snapshot: DashboardResponse = {
-			generatedAt: refreshStartTime.toISOString(),
-			lastRefreshAt: refreshStartTime.toISOString(),
-			stale,
-			timeZone: config.timeZone,
-			timeFormat: config.timeFormat ?? '12',
-			theme: config.theme ?? 'light',
-			displayName: config.displayName,
-			shortcutLimit: config.shortcutLimit ?? 8,
-			githubTokenConfigured: !!githubToken,
-			pullRequests,
-			shortcutGroups,
-			integrations: {
-				github: githubHealth,
-			},
-		};
-
-		await Promise.all([setFreshCache(snapshot), setLastSuccessCache(snapshot)]);
-
-		return snapshot;
-	}
-
-	async function getSnapshot(): Promise<DashboardResponse> {
-		const fresh = await getFreshCache();
-		if (fresh) {
-			return {
-				...fresh,
-				generatedAt: now.toISOString(),
-				stale: false,
-			};
-		}
-
-		const lastSuccess = await getLastSuccessCache();
-		if (lastSuccess) {
-			if (!refreshPromise) {
-				refreshPromise = (async () => {
-					try {
-						const config = await configRepository.getConfig();
-						return refresh(config, new Date());
-					} finally {
-						refreshPromise = null;
-					}
-				})();
-				void refreshPromise.catch(err => PinoLogger.warn({ scope: 'dashboard', message: 'Background refresh failed', error: err instanceof Error ? err.message : 'Unknown error' }));
-			}
-
-			return {
-				...lastSuccess,
-				generatedAt: now.toISOString(),
-				stale: true,
-			};
-		}
-
-		if (!refreshPromise) {
-			refreshPromise = (async () => {
-				try {
-					const config = await configRepository.getConfig();
-					return refresh(config, new Date());
-				} finally {
-					refreshPromise = null;
-				}
-			})();
-		}
-
-		return refreshPromise;
-	}
-
-	return { getSnapshot };
+async function addShortcut(db: EntityManager, input: AddShortcutInput) {
+	return createDashboardRepository(db).addShortcut(input);
 }
+
+async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]) {
+	return createDashboardRepository(db).addShortcuts(inputs);
+}
+
+async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }) {
+	return createDashboardRepository(db).updateShortcut(id, input);
+}
+
+async function deleteShortcut(db: EntityManager, id: string) {
+	return createDashboardRepository(db).deleteShortcut(id);
+}
+
+async function reorderShortcuts(db: EntityManager, groupId: string, shortcutIds: string[]) {
+	return createDashboardRepository(db).reorderShortcuts(groupId, shortcutIds);
+}
+
+async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupConfig[]) {
+	return createDashboardRepository(db).importShortcuts(shortcutGroups);
+}
+
+export const dashboard = Object.freeze({
+	get,
+	refreshPullRequests,
+	settings,
+	githubRepositories,
+	updateSettings,
+	addShortcut,
+	addShortcuts,
+	updateShortcut,
+	deleteShortcut,
+	reorderShortcuts,
+	importShortcuts,
+});

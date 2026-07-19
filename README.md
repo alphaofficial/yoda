@@ -41,7 +41,7 @@ Development falls back to built-in local-only keys if these variables are not se
 | `APP_KEY` | development fallback | HMAC signing key. Required in production. |
 | `DB_PATH` | `yoda.db` | SQLite database path. Use a mounted path in Docker. |
 | `DASHBOARD_CONFIG_PATH` | `config/dashboard.json` | Seed file path for first-time dashboard setup. |
-| `DASHBOARD_CACHE_TTL_SECONDS` | `60` | Dashboard cache TTL. Must be 5–3600 seconds. |
+| `DASHBOARD_CACHE_TTL_SECONDS` | `180` | Dashboard cache TTL. Must be 5–3600 seconds. |
 | `GITHUB_REPOSITORY_CACHE_TTL_SECONDS` | `900` | GitHub repository catalog cache TTL. Must be 60–86400 seconds. |
 | `DASHBOARD_REQUEST_TIMEOUT_MS` | `5000` | GitHub request timeout. Must be 1000–30000 ms. |
 | `DASHBOARD_RETRY_COUNT` | `2` | Retry count for failed dashboard requests. Must be 0–4. |
@@ -61,7 +61,7 @@ See `env.example` for mail, storage, session, and rate-limit options inherited f
   "shortcutLimit": 8,
   "github": {
     "windowDays": 7,
-    "repositories": []
+    "repositoryScopes": []
   },
   "shortcutGroups": [
     {

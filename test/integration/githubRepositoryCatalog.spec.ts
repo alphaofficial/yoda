@@ -6,22 +6,29 @@ import type { GitHubRepositoryCatalog } from '@/types/dashboard';
 
 const mocks = vi.hoisted(() => ({
 	discoverGitHubRepositories: vi.fn(),
+	getSettings: vi.fn(),
 }));
 
 vi.mock('@/integrations/github', () => ({
 	discoverGitHubRepositories: mocks.discoverGitHubRepositories,
+	createGitHubClient: vi.fn(),
+}));
+
+vi.mock('@/repositories/DashboardRepository', () => ({
+	createDashboardRepository: vi.fn(() => ({ getSettings: mocks.getSettings })),
 }));
 
 vi.mock('@/config/variables', () => ({
 	default: { GITHUB_REPOSITORY_CACHE_TTL_SECONDS: 900 },
 }));
 
-import { getGitHubRepositoryCatalog } from '@/core/githubRepositories';
+import { dashboard } from '@/core/dashboard';
 
 const catalog: GitHubRepositoryCatalog = {
 	viewerLogin: 'albert',
 	repositories: [],
 	defaultScopes: ['albert/*'],
+	teams: [],
 };
 
 describe('GitHub repository catalog cache', () => {
@@ -29,6 +36,7 @@ describe('GitHub repository catalog cache', () => {
 		clearPrimitiveRuntime('cache');
 		Cache.configure(createMemoryCacheDriver());
 		mocks.discoverGitHubRepositories.mockReset().mockResolvedValue(catalog);
+		mocks.getSettings.mockResolvedValue({ githubToken: 'token' });
 	});
 
 	afterEach(() => {
@@ -36,22 +44,23 @@ describe('GitHub repository catalog cache', () => {
 	});
 
 	it('reuses the cached catalog for repeated loads with the same token', async () => {
-		await getGitHubRepositoryCatalog('token');
-		await getGitHubRepositoryCatalog('token');
+		await dashboard.githubRepositories({} as never, false);
+		await dashboard.githubRepositories({} as never, false);
 
 		expect(mocks.discoverGitHubRepositories).toHaveBeenCalledTimes(1);
 	});
 
 	it('does not reuse a catalog created with another token', async () => {
-		await getGitHubRepositoryCatalog('first-token');
-		await getGitHubRepositoryCatalog('second-token');
+		mocks.getSettings.mockResolvedValueOnce({ githubToken: 'first-token' }).mockResolvedValueOnce({ githubToken: 'second-token' });
+		await dashboard.githubRepositories({} as never, false);
+		await dashboard.githubRepositories({} as never, false);
 
 		expect(mocks.discoverGitHubRepositories).toHaveBeenCalledTimes(2);
 	});
 
 	it('bypasses the cache when refresh is requested', async () => {
-		await getGitHubRepositoryCatalog('token');
-		await getGitHubRepositoryCatalog('token', true);
+		await dashboard.githubRepositories({} as never, false);
+		await dashboard.githubRepositories({} as never, true);
 
 		expect(mocks.discoverGitHubRepositories).toHaveBeenCalledTimes(2);
 	});

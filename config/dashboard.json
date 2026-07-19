@@ -4,7 +4,7 @@
 	"shortcutLimit": 8,
 	"github": {
 		"windowDays": 7,
-		"repositories": []
+		"repositoryScopes": []
 	},
 	"shortcutGroups": [
 		{

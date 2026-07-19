@@ -13,7 +13,7 @@ export const DashboardSettingsMapper = new EntitySchema<DashboardSettings>({
 		timeFormat: { type: 'string', fieldName: 'time_format', default: '12' },
 		theme: { type: 'string', default: 'light' },
 		githubToken: { type: 'string', fieldName: 'github_token', nullable: true },
-		repositories: { type: 'string', default: '[]' },
+		repositoryScopes: { type: 'string', fieldName: 'repositories', default: '[]' },
 		pullRequestFilters: { type: 'string', fieldName: 'pull_request_filters', default: '{}' },
 		createdAt: { type: 'Date', fieldName: 'created_at', defaultRaw: 'CURRENT_TIMESTAMP' },
 		updatedAt: { type: 'Date', fieldName: 'updated_at', defaultRaw: 'CURRENT_TIMESTAMP', onUpdate: () => new Date() },

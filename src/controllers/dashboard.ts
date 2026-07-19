@@ -1,23 +1,37 @@
 import { type Request, type Response } from 'express';
-import { createDashboardService, invalidateDashboardSnapshot } from '@/core/dashboard';
-import { DashboardConfigRepository } from '@/repositories/DashboardConfigRepository';
+import { dashboard } from '@/core/dashboard';
 import { redirectToSettings } from '@/controllers/settingsRedirect';
 import { ShortcutValidationError } from '@/types/dashboard';
 
+const PULL_REQUEST_FILTER_COOKIE = 'yoda_pull_request_filters';
+
+function getCookie(req: Request, name: string): string | null {
+	const entry = req.headers.cookie?.split(';').map(cookie => cookie.trim()).find(cookie => cookie.startsWith(`${name}=`));
+	if (!entry) return null;
+	try {
+		return decodeURIComponent(entry.slice(name.length + 1)).slice(0, 4000);
+	} catch {
+		return null;
+	}
+}
+
 export async function dashboardIndex(req: Request, res: Response) {
-	const dashboardService = createDashboardService({
-		configRepository: new DashboardConfigRepository(req.ctx.db.fork()),
+	const dashboardData = await dashboard.get(req.ctx.db, new Date());
+	return res.render('Home', {
+		theme: dashboardData.theme ?? 'light',
+		dashboard: dashboardData,
+		pullRequestFilterState: getCookie(req, PULL_REQUEST_FILTER_COOKIE),
 	});
-	const dashboard = await dashboardService.getSnapshot();
-	return res.render('Home', { _theme: dashboard.theme ?? 'light', dashboard });
+}
+
+export async function refreshPullRequests(req: Request, res: Response) {
+	await dashboard.refreshPullRequests(req.ctx.db, new Date());
+	return res.redirect(303, '/');
 }
 
 export async function createShortcut(req: Request, res: Response) {
 	try {
-		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
-		await configRepository.addShortcut(req.body);
-		const config = await configRepository.getConfig();
-		await invalidateDashboardSnapshot(config);
+		await dashboard.addShortcut(req.ctx.db, req.body);
 		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Shortcut added.' });
 	} catch (err) {
 		if (err instanceof ShortcutValidationError) {
@@ -41,10 +55,7 @@ export async function importBookmarkShortcuts(req: Request, res: Response) {
 		if (shortcuts.length === 0) {
 			throw new ShortcutValidationError('Choose at least one bookmark');
 		}
-		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
-		const importedCount = await configRepository.addShortcuts(shortcuts);
-		const config = await configRepository.getConfig();
-		await invalidateDashboardSnapshot(config);
+		const importedCount = await dashboard.addShortcuts(req.ctx.db, shortcuts);
 		const message = importedCount === 0
 			? 'Those bookmarks are already shortcuts.'
 			: `${importedCount} bookmark${importedCount === 1 ? '' : 's'} imported.`;
@@ -60,10 +71,7 @@ export async function importBookmarkShortcuts(req: Request, res: Response) {
 export async function updateShortcut(req: Request, res: Response) {
 	try {
 		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
-		await configRepository.updateShortcut(shortcutId, req.body);
-		const config = await configRepository.getConfig();
-		await invalidateDashboardSnapshot(config);
+		await dashboard.updateShortcut(req.ctx.db, shortcutId, req.body);
 		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Shortcut updated.' });
 	} catch (err) {
 		if (err instanceof ShortcutValidationError) {
@@ -76,10 +84,7 @@ export async function updateShortcut(req: Request, res: Response) {
 export async function deleteShortcut(req: Request, res: Response) {
 	try {
 		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
-		await configRepository.deleteShortcut(shortcutId);
-		const config = await configRepository.getConfig();
-		await invalidateDashboardSnapshot(config);
+		await dashboard.deleteShortcut(req.ctx.db, shortcutId);
 		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Shortcut removed.' });
 	} catch (err) {
 		if (err instanceof ShortcutValidationError) {
@@ -95,10 +100,7 @@ export async function reorderShortcuts(req: Request, res: Response) {
 		const shortcutIds = Array.isArray(req.body.shortcutIds)
 			? req.body.shortcutIds.filter((id: unknown): id is string => typeof id === 'string')
 			: [];
-		const configRepository = new DashboardConfigRepository(req.ctx.db.fork());
-		await configRepository.reorderShortcuts(groupId, shortcutIds);
-		const config = await configRepository.getConfig();
-		await invalidateDashboardSnapshot(config);
+		await dashboard.reorderShortcuts(req.ctx.db, groupId, shortcutIds);
 		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Shortcut order saved.' });
 	} catch (err) {
 		if (err instanceof ShortcutValidationError) {
