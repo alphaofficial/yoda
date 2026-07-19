@@ -26,7 +26,7 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
 		<Card className="flex flex-row items-center gap-3 px-4 py-4 shadow-sm transition-colors group-hover:bg-muted group-focus-visible:bg-muted sm:gap-4 sm:px-6">
 			<div className="flex size-5 shrink-0 items-center justify-center">
 				{faviconUrl && !faviconFailed ? (
-					<img src={faviconUrl} alt="" className="size-5" onError={() => setFaviconFailed(true)} loading="eager" decoding="async" />
+					<img src={faviconUrl} alt="" className="size-5 rounded-md" onError={() => setFaviconFailed(true)} loading="eager" decoding="async" />
 				) : (
 					<Globe2 className="size-5 text-muted-foreground" aria-hidden="true" />
 				)}
