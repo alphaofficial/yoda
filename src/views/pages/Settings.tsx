@@ -21,6 +21,7 @@ import {
 	X,
 } from 'lucide-react';
 import { Button } from '@/views/components/ui/button';
+import { messages } from '@/config/messages';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/views/components/ui/dialog';
 import { Input } from '@/views/components/ui/input';
 import { Label } from '@/views/components/ui/label';
@@ -47,7 +48,6 @@ interface SettingsData {
 interface PageProps extends InertiaPageProps {
 	applicationName: string;
 	activeSection: SettingsSection;
-	feedback: { type: 'success' | 'error'; message: string } | null;
 	repositoryCatalog: (GitHubRepositoryCatalog & { selectedScopes: string[] }) | null;
 	repositoryError: string;
 	backupStatus: { count: number; lastBackupAt: string | null };
@@ -142,7 +142,7 @@ function BookmarkImporter({
 	onImported,
 }: {
 	groups: ShortcutGroupConfig[];
-	onImported: (groups: ShortcutGroupConfig[], message: string) => void;
+	onImported: (groups: ShortcutGroupConfig[]) => void;
 }) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [state, dispatch] = useReducer(bookmarkImporterReducer, {
@@ -175,7 +175,7 @@ function BookmarkImporter({
 			}));
 
 		if (parsed.length === 0) {
-			dispatch({ type: 'failed', message: 'No new web bookmarks were found in that file.' });
+			dispatch({ type: 'failed', message: messages.bookmarks.noneFound });
 			return;
 		}
 
@@ -199,17 +199,10 @@ function BookmarkImporter({
 			preserveScroll: true,
 			onSuccess: page => {
 				const nextProps = page.props as unknown as PageProps;
-				if (nextProps.feedback?.type === 'error') {
-					dispatch({ type: 'failed', message: nextProps.feedback.message });
-					return;
-				}
-				onImported(
-					nextProps.settings.shortcutGroups,
-					nextProps.feedback?.message ?? `${selected.length} bookmark${selected.length === 1 ? '' : 's'} imported.`,
-				);
+				onImported(nextProps.settings.shortcutGroups);
 				dispatch({ type: 'dialogChanged', open: false });
 			},
-			onError: () => dispatch({ type: 'failed', message: 'Could not import bookmarks.' }),
+			onError: () => dispatch({ type: 'failed', message: messages.bookmarks.importFailed }),
 			onFinish: () => dispatch({ type: 'importFinished' }),
 		});
 	};
@@ -380,8 +373,10 @@ export default function Settings() {
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [backingUp, setBackingUp] = useState(false);
-	const [message, setMessage] = useState(props.feedback?.message ?? '');
+	const [localMessage, setLocalMessage] = useState('');
 	const shortcutImportRef = useRef<HTMLInputElement>(null);
+	const flash = usePage().flash;
+	const flashMessage = flash.message ?? localMessage;
 
 	const applySettingsPage = (page: { props: unknown }) => {
 		const nextProps = page.props as PageProps;
@@ -399,7 +394,6 @@ export default function Settings() {
 		setRepositoryCatalog(nextProps.repositoryCatalog);
 		setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? next.repositoryScopes);
 		setRepositoryError(nextProps.repositoryError);
-		if (nextProps.feedback) setMessage(nextProps.feedback.message);
 		return nextProps;
 	};
 
@@ -418,7 +412,7 @@ export default function Settings() {
 				setRepositoryError(nextProps.repositoryError);
 				window.history.replaceState(window.history.state, '', '/settings?section=github');
 			},
-			onError: () => setRepositoryError('Could not load repositories from GitHub.'),
+			onError: () => setRepositoryError(messages.github.loadRepositoriesFailed),
 			onFinish: () => setLoadingRepositories(false),
 		});
 	};
@@ -436,7 +430,7 @@ export default function Settings() {
 
 	const selectSection = (section: SettingsSection) => {
 		setActiveSection(section);
-		setMessage('');
+		setLocalMessage('');
 		const url = new URL(window.location.href);
 		url.searchParams.set('section', section);
 		window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
@@ -444,18 +438,18 @@ export default function Settings() {
 
 	const saveGeneral = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=general', { displayName, timeZone, timeFormat, theme }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save general settings.'),
+			onError: () => setLocalMessage(messages.settings.generalSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveGithub = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		const replacingToken = token.trim().length > 0;
 		router.patch('/settings?section=github', {
 			githubToken: token || undefined,
@@ -468,7 +462,7 @@ export default function Settings() {
 				setToken('');
 				router.prefetch('/', {}, { cacheFor: '30s' });
 			},
-			onError: () => setMessage('Could not save GitHub settings.'),
+			onError: () => setLocalMessage(messages.github.settingsSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -486,7 +480,7 @@ export default function Settings() {
 	const addShortcut = (event: FormEvent) => {
 		event.preventDefault();
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.post('/settings/shortcuts', {
 			groupId: newShortcutGroupId,
 			label: newShortcutLabel,
@@ -498,7 +492,7 @@ export default function Settings() {
 				setNewShortcutLabel('');
 				setNewShortcutUrl('');
 			},
-			onError: () => setMessage('Could not add quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.addFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -512,7 +506,7 @@ export default function Settings() {
 
 	const saveShortcut = (shortcutId: string) => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 			label: editingShortcutLabel,
 			url: editingShortcutUrl,
@@ -522,61 +516,61 @@ export default function Settings() {
 				applySettingsPage(page);
 				setEditingShortcutId(null);
 			},
-			onError: () => setMessage('Could not update quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.updateFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const deleteShortcut = (shortcutId: string) => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.delete(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setConfirmDeleteId(null);
 			},
-			onError: () => setMessage('Could not remove quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.removeFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveShortcutLimit = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=shortcuts', { shortcutLimit }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save quick link limit.'),
+			onError: () => setLocalMessage(messages.shortcuts.limitSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveBackups = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=backups', { backupIntervalHours, backupRetentionDays }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save backup settings.'),
+			onError: () => setLocalMessage(messages.backup.settingsSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const backupNow = () => {
 		setBackingUp(true);
-		setMessage('');
+		setLocalMessage('');
 		router.post('/settings/backups', {}, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not create backup.'),
+			onError: () => setLocalMessage(messages.backup.createFailed),
 			onFinish: () => setBackingUp(false),
 		});
 	};
 
 	const persistOrder = async (groupId: string, nextShortcuts: ShortcutGroupConfig['shortcuts'], previousShortcuts: ShortcutGroupConfig['shortcuts']) => {
 		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: nextShortcuts } : group));
-		setMessage('Saving quick link order…');
+		setLocalMessage(messages.shortcuts.orderSaving);
 		router.put('/settings/shortcuts/reorder', {
 			groupId,
 			shortcutIds: nextShortcuts.map(shortcut => shortcut.id),
@@ -585,7 +579,7 @@ export default function Settings() {
 			onSuccess: applySettingsPage,
 			onError: () => {
 				setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: previousShortcuts } : group));
-				setMessage('Could not save quick link order.');
+				setLocalMessage(messages.shortcuts.orderSaveFailed);
 			},
 		});
 	};
@@ -622,9 +616,8 @@ export default function Settings() {
 		void persistOrder(groupId, next, previous);
 	};
 
-	const handleImported = (nextGroups: ShortcutGroupConfig[], feedbackMessage: string) => {
+	const handleImported = (nextGroups: ShortcutGroupConfig[]) => {
 		setGroups(nextGroups);
-		setMessage(feedbackMessage);
 	};
 
 	const importShortcutSettings = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -632,7 +625,7 @@ export default function Settings() {
 		if (!file) return;
 
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		try {
 			const imported = JSON.parse(await file.text());
 			router.post('/settings/shortcuts/import', imported, {
@@ -642,13 +635,13 @@ export default function Settings() {
 					setEditingShortcutId(null);
 					setConfirmDeleteId(null);
 				},
-				onError: () => setMessage('Could not import quick links.'),
+				onError: () => setLocalMessage(messages.shortcuts.importFailed),
 				onFinish: () => setSaving(false),
 			});
 		} catch (caught) {
-			setMessage(caught instanceof SyntaxError
-				? 'That file is not valid JSON.'
-				: caught instanceof Error ? caught.message : 'Could not import quick links.');
+			setLocalMessage(caught instanceof SyntaxError
+				? messages.shortcuts.invalidImportJson
+				: caught instanceof Error ? caught.message : messages.shortcuts.importFailed);
 			event.target.value = '';
 			setSaving(false);
 		}
@@ -672,13 +665,16 @@ export default function Settings() {
 			<div className="min-h-screen bg-background text-foreground antialiased">
 				<main className="settings-shell">
 					<header className="settings-header">
-					<Button variant="ghost" className="-ml-6" render={<Link href="/" prefetch="hover" />}>
+						<Button variant="ghost" className="-ml-6" render={<Link href="/" prefetch="hover" />}>
 							<ArrowLeft aria-hidden="true" />
 							Dashboard
 						</Button>
 						<div>
 							<h1 className="display-heading page-heading text-foreground">Settings</h1>
-							<p className="mt-1 text-muted-foreground">Configure your dashboard and integrations.</p>
+							<div className="settings-subtitle-row">
+								<p className="mt-1 text-muted-foreground">Configure your dashboard and integrations.</p>
+								{flashMessage && <p className="settings-message" role="status">{flashMessage}</p>}
+							</div>
 						</div>
 					</header>
 
@@ -962,7 +958,6 @@ export default function Settings() {
 								</section>
 							)}
 
-							{message && <p className="settings-message" role="status">{message}</p>}
 						</div>
 					</div>
 				</main>

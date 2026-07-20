@@ -1,7 +1,6 @@
 import { type Request, type Response } from 'express';
 import { dashboard } from '@/core/dashboard';
-import { redirectToSettings } from '@/controllers/settingsRedirect';
-import { ShortcutValidationError } from '@/types/dashboard';
+import { messages } from '@/config/messages';
 
 const PULL_REQUEST_FILTER_COOKIE = 'yoda_pull_request_filters';
 
@@ -30,81 +29,65 @@ export async function refreshPullRequests(req: Request, res: Response) {
 }
 
 export async function createShortcut(req: Request, res: Response) {
-	try {
-		await dashboard.addShortcut(req.ctx.db, req.body);
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Quick link added.' });
-	} catch (err) {
-		if (err instanceof ShortcutValidationError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: err.message });
-		}
-		throw err;
+	const [, error] = await dashboard.addShortcut(req.ctx.db, req.body);
+	if (error) {
+		req.session.flash = { message: error.message };
+		return res.redirect(303, '/settings?section=shortcuts');
 	}
+	req.session.flash = { message: messages.shortcuts.added };
+	return res.redirect(303, '/settings?section=shortcuts');
 }
 
 export async function importBookmarkShortcuts(req: Request, res: Response) {
-	try {
-		const groupId = typeof req.body.groupId === 'string' ? req.body.groupId : '';
-		const shortcuts = Array.isArray(req.body.shortcuts)
-			? req.body.shortcuts.map((shortcut: { label?: unknown; url?: unknown }) => ({
-				groupId,
-				label: typeof shortcut.label === 'string' ? shortcut.label : '',
-				url: typeof shortcut.url === 'string' ? shortcut.url : '',
-			}))
-			: [];
-		if (shortcuts.length === 0) {
-			throw new ShortcutValidationError('Choose at least one bookmark');
-		}
-		const importedCount = await dashboard.addShortcuts(req.ctx.db, shortcuts);
-		const message = importedCount === 0
-			? 'Those bookmarks are already quick links.'
-			: `${importedCount} bookmark${importedCount === 1 ? '' : 's'} imported.`;
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message });
-	} catch (err) {
-		if (err instanceof ShortcutValidationError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: err.message });
-		}
-		throw err;
+	const groupId = typeof req.body.groupId === 'string' ? req.body.groupId : '';
+	const shortcuts = Array.isArray(req.body.shortcuts)
+		? req.body.shortcuts.map((shortcut: { label?: unknown; url?: unknown }) => ({
+			groupId,
+			label: typeof shortcut.label === 'string' ? shortcut.label : '',
+			url: typeof shortcut.url === 'string' ? shortcut.url : '',
+		}))
+		: [];
+	const [, error] = await dashboard.addShortcuts(req.ctx.db, shortcuts);
+	if (error) {
+		req.session.flash = { message: error.message };
+		return res.redirect(303, '/settings?section=shortcuts');
 	}
+	req.session.flash = { message: messages.bookmarks.imported };
+	return res.redirect(303, '/settings?section=shortcuts');
 }
 
 export async function updateShortcut(req: Request, res: Response) {
-	try {
-		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-		await dashboard.updateShortcut(req.ctx.db, shortcutId, req.body);
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Quick link updated.' });
-	} catch (err) {
-		if (err instanceof ShortcutValidationError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: err.message });
-		}
-		throw err;
+	const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+	const [, error] = await dashboard.updateShortcut(req.ctx.db, shortcutId, req.body);
+	if (error) {
+		req.session.flash = { message: error.message };
+		return res.redirect(303, '/settings?section=shortcuts');
 	}
+	req.session.flash = { message: messages.shortcuts.updated };
+	return res.redirect(303, '/settings?section=shortcuts');
 }
 
 export async function deleteShortcut(req: Request, res: Response) {
-	try {
-		const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
-		await dashboard.deleteShortcut(req.ctx.db, shortcutId);
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Quick link removed.' });
-	} catch (err) {
-		if (err instanceof ShortcutValidationError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: err.message });
-		}
-		throw err;
+	const shortcutId = Array.isArray(req.params.id) ? req.params.id[0] : req.params.id;
+	const [, error] = await dashboard.deleteShortcut(req.ctx.db, shortcutId);
+	if (error) {
+		req.session.flash = { message: error.message };
+		return res.redirect(303, '/settings?section=shortcuts');
 	}
+	req.session.flash = { message: messages.shortcuts.removed };
+	return res.redirect(303, '/settings?section=shortcuts');
 }
 
 export async function reorderShortcuts(req: Request, res: Response) {
-	try {
-		const groupId = typeof req.body.groupId === 'string' ? req.body.groupId : '';
-		const shortcutIds = Array.isArray(req.body.shortcutIds)
-			? req.body.shortcutIds.filter((id: unknown): id is string => typeof id === 'string')
-			: [];
-		await dashboard.reorderShortcuts(req.ctx.db, groupId, shortcutIds);
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Quick link order saved.' });
-	} catch (err) {
-		if (err instanceof ShortcutValidationError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: err.message });
-		}
-		throw err;
+	const groupId = typeof req.body.groupId === 'string' ? req.body.groupId : '';
+	const shortcutIds = Array.isArray(req.body.shortcutIds)
+		? req.body.shortcutIds.filter((id: unknown): id is string => typeof id === 'string')
+		: [];
+	const [, error] = await dashboard.reorderShortcuts(req.ctx.db, groupId, shortcutIds);
+	if (error) {
+		req.session.flash = { message: error.message };
+		return res.redirect(303, '/settings?section=shortcuts');
 	}
+	req.session.flash = { message: messages.shortcuts.orderSaved };
+	return res.redirect(303, '/settings?section=shortcuts');
 }

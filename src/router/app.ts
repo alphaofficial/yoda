@@ -90,7 +90,7 @@ export async function createApp() {
 			resave: false,
 			saveUninitialized: false,
 			cookie: {
-				secure: variables.NODE_ENV === 'production',
+				secure: 'auto',
 				httpOnly: true,
 				sameSite: 'lax',
 				maxAge: variables.SESSION_MAX_AGE,

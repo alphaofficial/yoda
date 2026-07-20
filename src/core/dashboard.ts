@@ -5,6 +5,7 @@ import { createGitHubClient, discoverGitHubPullRequestContext, discoverGitHubRep
 import { PinoLogger } from '@/logger/pinoLogger';
 import { Cache } from '@/primitives/cache';
 import { createDashboardRepository } from '@/repositories/DashboardRepository';
+import { ShortcutValidationError } from '@/types/dashboard';
 import type {
 	AddShortcutInput,
 	DashboardConfig,
@@ -225,23 +226,50 @@ async function updateSettings(db: EntityManager, input: Parameters<ReturnType<ty
 }
 
 async function addShortcut(db: EntityManager, input: AddShortcutInput) {
-	return createDashboardRepository(db).addShortcut(input);
+	try {
+		return [await createDashboardRepository(db).addShortcut(input), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]) {
-	return createDashboardRepository(db).addShortcuts(inputs);
+	try {
+		return [await createDashboardRepository(db).addShortcuts(inputs), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [0, error] as const;
+		throw error;
+	}
 }
 
 async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }) {
-	return createDashboardRepository(db).updateShortcut(id, input);
+	try {
+		return [await createDashboardRepository(db).updateShortcut(id, input), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function deleteShortcut(db: EntityManager, id: string) {
-	return createDashboardRepository(db).deleteShortcut(id);
+	try {
+		await createDashboardRepository(db).deleteShortcut(id);
+		return [true, null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function reorderShortcuts(db: EntityManager, groupId: string, shortcutIds: string[]) {
-	return createDashboardRepository(db).reorderShortcuts(groupId, shortcutIds);
+	try {
+		await createDashboardRepository(db).reorderShortcuts(groupId, shortcutIds);
+		return [true, null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupConfig[]) {
