@@ -66,6 +66,25 @@ describe('GitHub repository discovery', () => {
 		expect(String(mockTransport.mock.calls[2][0])).toContain('per_page=100&page=2');
 	});
 
+	it('keeps accessible repositories when team lookup is forbidden', async () => {
+		const mockTransport = vi.fn(async (input: string | URL | Request) => {
+			const url = String(input);
+			if (url.endsWith('/user')) return jsonResponse({ login: 'albert' });
+			if (url.includes('/user/repos')) return jsonResponse([
+				repository(1, 'mol-fe-site-api'),
+				repository(2, 'mol-fe-feeds'),
+			]);
+			if (url.includes('/user/teams')) return jsonResponse({ message: 'Resource not accessible by personal access token' }, 403);
+			throw new Error(`Unexpected GitHub request: ${url}`);
+		});
+		vi.stubGlobal('fetch', mockTransport);
+
+		const result = await discoverGitHubRepositories('token');
+
+		expect(result.repositories.map(item => item.fullName)).toEqual(['mol-fe-site-api', 'mol-fe-feeds']);
+		expect(result.teams).toEqual([]);
+	});
+
 	it('loads lightweight dashboard context without enumerating repositories', async () => {
 		const mockTransport = vi.fn(async (input: string | URL | Request) => {
 			const url = String(input);
@@ -97,6 +116,21 @@ describe('GitHub repository discovery', () => {
 		expect(result.ownerTypes).toEqual({ acme: 'Organization' });
 		expect(mockTransport).toHaveBeenCalledTimes(3);
 		expect(mockTransport.mock.calls.every(([input]) => !String(input).includes('/user/repos'))).toBe(true);
+	});
+
+	it('loads pull request context when team lookup is forbidden', async () => {
+		const mockTransport = vi.fn(async (input: string | URL | Request) => {
+			const url = String(input);
+			if (url.endsWith('/user')) return jsonResponse({ login: 'albert' });
+			if (url.includes('/user/teams')) return jsonResponse({ message: 'Resource not accessible by personal access token' }, 403);
+			if (url.endsWith('/users/dailymail')) return jsonResponse({ login: 'DailyMail', type: 'Organization' });
+			throw new Error(`Unexpected GitHub request: ${url}`);
+		});
+		vi.stubGlobal('fetch', mockTransport);
+
+		const result = await discoverGitHubPullRequestContext('token', ['DailyMail/*']);
+
+		expect(result).toEqual({ viewerLogin: 'albert', teams: [], ownerTypes: { dailymail: 'Organization' } });
 	});
 });
 
@@ -263,6 +297,27 @@ describe('GitHub pull request selection', () => {
 		expect(result.items).toHaveLength(2);
 		expect(result.items.map(item => item.state)).toEqual(['merged', 'draft']);
 		expect(graphPage).toBe(5);
+	});
+
+	it('ignores null search nodes returned for inaccessible pull requests', async () => {
+		const mockTransport = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+			const body = JSON.parse(String(init?.body));
+			if (isInvolvementQuery(body.variables.query)) {
+				return jsonResponse({ data: { search: { nodes: [null], pageInfo: { hasNextPage: false, endCursor: null } } } });
+			}
+			return jsonResponse({ data: { search: { nodes: [null, pullRequest()], pageInfo: { hasNextPage: false, endCursor: null } } } });
+		});
+		vi.stubGlobal('fetch', mockTransport);
+
+		const result = await createGitHubClient({
+			token: 'token',
+			repositoryScopes: ['acme/dashboard'],
+			windowDays: 1,
+			requestedAt: new Date('2026-07-18T12:00:00Z'),
+			pullRequestContext: pullRequestContext(),
+		}).fetchPullRequests();
+
+		expect(result.items.map(item => item.id)).toEqual(['PR_1']);
 	});
 
 	it('marks pull requests that GitHub reports as involving the authenticated user', async () => {

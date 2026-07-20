@@ -267,7 +267,7 @@ function BookmarkImporter({
 						<div className="flex justify-end gap-2">
 							<Button type="button" variant="outline" onClick={() => dispatch({ type: 'dialogChanged', open: false })} disabled={importing}>Cancel</Button>
 							<Button type="button" onClick={importSelected} disabled={importing || selectedCount === 0}>
-								{importing ? 'Importing…' : `Import selected${selectedCount ? ` (${selectedCount})` : ''}`}
+								{`Import selected${selectedCount ? ` (${selectedCount})` : ''}`}
 							</Button>
 						</div>
 					</div>
@@ -746,7 +746,7 @@ export default function Settings() {
 											</div>
 										</div>
 									</div>
-									<div className="flex justify-end"><Button type="button" onClick={saveGeneral} disabled={saving}>{saving ? 'Saving…' : 'Save general settings'}</Button></div>
+									<div className="flex justify-end"><Button type="button" onClick={saveGeneral} disabled={saving}>Save general settings</Button></div>
 								</section>
 							)}
 
@@ -824,10 +824,7 @@ export default function Settings() {
 										)}
 									</div>
 									<div className="settings-save-action flex justify-end">
-										<Button type="button" className="relative" onClick={saveGithub} disabled={saving} aria-busy={saving}>
-											<span className={saving ? 'invisible' : undefined}>Save GitHub settings</span>
-											{saving && <span className="absolute inset-0 flex items-center justify-center">Saving…</span>}
-										</Button>
+										<Button type="button" onClick={saveGithub} disabled={saving} aria-busy={saving}>Save GitHub settings</Button>
 									</div>
 								</section>
 							)}
@@ -852,7 +849,7 @@ export default function Settings() {
 												</p>
 											</div>
 										</div>
-										<Button type="button" variant="outline" onClick={backupNow} disabled={backingUp || saving}>{backingUp ? 'Creating…' : 'Back up now'}</Button>
+										<Button type="button" variant="outline" onClick={backupNow} disabled={backingUp || saving}>Back up now</Button>
 									</div>
 									<div className="settings-form-grid">
 										<div className="grid gap-2">
@@ -876,7 +873,7 @@ export default function Settings() {
 									</div>
 									<p className="-mt-3 text-sm text-muted-foreground">Expired backups are deleted automatically. The newest backup is always kept.</p>
 									<div className="settings-save-action flex justify-end border-t pt-6">
-										<Button type="button" onClick={saveBackups} disabled={saving || backingUp}>{saving ? 'Saving…' : 'Save settings'}</Button>
+										<Button type="button" onClick={saveBackups} disabled={saving || backingUp}>Save settings</Button>
 									</div>
 								</section>
 							)}
@@ -909,7 +906,7 @@ export default function Settings() {
 															<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
 															<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
 														</div>
-														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>{saving ? 'Adding…' : 'Add'}</Button>
+														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>Add</Button>
 													</form>
 												)}
 												{group.shortcuts.map((shortcut, index) => (

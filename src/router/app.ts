@@ -43,7 +43,14 @@ export async function createApp() {
 	 */
 	app.use(
 		helmet({
-			contentSecurityPolicy: variables.NODE_ENV === 'production' ? undefined : false,
+			contentSecurityPolicy: variables.NODE_ENV === 'production'
+				? {
+					directives: {
+						'img-src': ["'self'", 'data:', 'https:'],
+						'upgrade-insecure-requests': variables.APP_URL.startsWith('https:') ? [] : null,
+					},
+				}
+				: false,
 		}),
 	);
 
