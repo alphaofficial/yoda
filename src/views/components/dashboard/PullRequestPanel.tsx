@@ -5,6 +5,7 @@ import { BookOpen, ChevronLeft, ChevronRight, ExternalLink, GitPullRequest, Hash
 import { Button } from '@/views/components/ui/button';
 import { Card, CardContent } from '@/views/components/ui/card';
 import type { DashboardResponse, PullRequestItem } from '@/types/dashboard';
+import { timeAgo } from '@/views/lib/timeAgo';
 
 interface PullRequestPanelProps {
 	pullRequests: DashboardResponse['pullRequests'];
@@ -288,20 +289,6 @@ function matchesAppliedFilters(item: PullRequestItem, filters: AppliedFilter[]):
 	return expressionMatches || groupMatches;
 }
 
-function formatRelativeAge(isoString: string): string {
-	const date = new Date(isoString);
-	const now = new Date();
-	const diffMs = now.getTime() - date.getTime();
-	const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-	if (diffDays === 0) return 'today';
-	if (diffDays === 1) return '1 day ago';
-	if (diffDays < 7) return `${diffDays} days ago`;
-	if (diffDays < 14) return '1 week ago';
-	const weeks = Math.floor(diffDays / 7);
-	return `${weeks} weeks ago`;
-}
-
 function getStateLabel(state: PullRequestItem['state']): string {
 	switch (state) {
 		case 'open':
@@ -350,7 +337,7 @@ function PullRequestRow({ item }: { item: PullRequestItem }) {
 						{item.repository} #{item.number}
 					</span>
 					<span aria-hidden="true">·</span>
-					<span>Updated {formatRelativeAge(item.updatedAt)}</span>
+					<span>Updated {timeAgo(item.updatedAt)}</span>
 				</div>
 			</div>
 			<ExternalLink className="mt-1 size-4 shrink-0 text-muted-foreground/40" aria-hidden="true" />
