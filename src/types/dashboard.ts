@@ -76,6 +76,7 @@ export interface ShortcutItem {
 	id: string;
 	label: string;
 	url: string;
+	emoji?: string | null;
 }
 
 export interface ShortcutGroupConfig {
@@ -88,6 +89,7 @@ export interface ShortcutConfig {
 	id: string;
 	label: string;
 	url: string;
+	emoji?: string | null;
 }
 
 export interface DashboardConfig {
@@ -116,6 +118,7 @@ export interface AddShortcutInput {
 	groupId: string;
 	label: string;
 	url: string;
+	emoji?: string | null;
 	position?: number;
 }
 

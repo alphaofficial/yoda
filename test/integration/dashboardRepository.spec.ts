@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createDashboardRepository } from '@/repositories/DashboardRepository';
+import { DashboardRepository } from '@/repositories/DashboardRepository';
 import { DashboardShortcut } from '@/models/DashboardShortcut';
 import type { ShortcutGroupConfig } from '@/types/dashboard';
 
@@ -43,7 +43,7 @@ describe('DashboardRepository shortcut import', () => {
 			shortcuts: [{ id: 'github', label: 'GitHub', url: 'https://github.com' }],
 		}];
 
-		const config = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
+		const config = await DashboardRepository.importShortcuts(db as never, shortcutGroups);
 
 		expect(config.shortcutGroups).toEqual([{
 			id: 'shortcuts',
@@ -96,7 +96,7 @@ describe('DashboardRepository shortcut import', () => {
 			],
 		}];
 
-		const first = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
+		const first = await DashboardRepository.importShortcuts(db as never, shortcutGroups);
 
 		expect(first.shortcutGroups[0].shortcuts).toEqual([
 			{ id: 'github', label: 'GitHub', url: 'https://github.com' },
@@ -108,7 +108,7 @@ describe('DashboardRepository shortcut import', () => {
 		expect(db.persist).toHaveBeenCalledTimes(1);
 		expect(db.flush).toHaveBeenCalledTimes(1);
 
-		const second = await createDashboardRepository(db as never).importShortcuts(shortcutGroups);
+		const second = await DashboardRepository.importShortcuts(db as never, shortcutGroups);
 
 		expect(second.shortcutGroups).toEqual(first.shortcutGroups);
 		expect(db.remove).toHaveBeenCalledTimes(1);
@@ -137,7 +137,7 @@ describe('DashboardRepository general settings', () => {
 			flush: vi.fn().mockResolvedValue(undefined),
 		};
 
-		const config = await createDashboardRepository(db as never).updateSettings({
+		const config = await DashboardRepository.updateSettings(db as never, {
 			backupIntervalHours: 6,
 			backupRetentionDays: 14,
 		});
@@ -165,7 +165,7 @@ describe('DashboardRepository general settings', () => {
 			flush: vi.fn().mockResolvedValue(undefined),
 		};
 
-		const config = await createDashboardRepository(db as never).updateSettings({ timeFormat: '24' });
+		const config = await DashboardRepository.updateSettings(db as never, { timeFormat: '24' });
 
 		expect(settings.timeFormat).toBe('24');
 		expect(config.timeFormat).toBe('24');
@@ -189,7 +189,7 @@ describe('DashboardRepository general settings', () => {
 			flush: vi.fn().mockResolvedValue(undefined),
 		};
 
-		const config = await createDashboardRepository(db as never).updateSettings({ theme: 'dark' });
+		const config = await DashboardRepository.updateSettings(db as never, { theme: 'dark' });
 
 		expect(settings.theme).toBe('dark');
 		expect(config.theme).toBe('dark');

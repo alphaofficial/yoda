@@ -47,7 +47,7 @@ interface RawPullRequest {
 interface SearchResponse {
 	data?: {
 		search?: {
-			nodes: RawPullRequest[];
+			nodes: Array<RawPullRequest | null>;
 			pageInfo: { endCursor: string | null; hasNextPage: boolean };
 		};
 	};
@@ -59,6 +59,20 @@ const GITHUB_HEADERS = {
 	'X-GitHub-Api-Version': '2022-11-28',
 };
 const GITHUB_BASE_URL = 'https://api.github.com';
+
+async function fetchGitHubTeams(client: ReturnType<typeof createHttpClient>, headers: Record<string, string>): Promise<string[]> {
+	try {
+		const teams: string[] = [];
+		for (let page = 1; ; page++) {
+			const result = await client.get<RawTeam[]>(`/user/teams?per_page=100&page=${page}`, { headers });
+			teams.push(...result.map(team => `${team.organization.login}/${team.slug}`));
+			if (result.length < 100) return Array.from(new Set(teams)).sort((a, b) => a.localeCompare(b));
+		}
+	} catch (error) {
+		if (error instanceof IntegrationRequestError && (error.status === 403 || error.status === 404)) return [];
+		throw error;
+	}
+}
 
 export async function discoverGitHubRepositories(token: string): Promise<GitHubRepositoryCatalog> {
 	const client = createHttpClient(GITHUB_BASE_URL);
@@ -85,12 +99,7 @@ export async function discoverGitHubRepositories(token: string): Promise<GitHubR
 
 		if (result.length < 100) break;
 	}
-	const teams: string[] = [];
-	for (let page = 1; ; page++) {
-		const result = await client.get<RawTeam[]>(`/user/teams?per_page=100&page=${page}`, { headers });
-		teams.push(...result.map(team => `${team.organization.login}/${team.slug}`));
-		if (result.length < 100) break;
-	}
+	const teams = await fetchGitHubTeams(client, headers);
 
 	return {
 		viewerLogin: viewer.login,
@@ -107,17 +116,9 @@ export async function discoverGitHubPullRequestContext(token: string, repository
 		.filter(scope => scope.endsWith('/*'))
 		.map(scope => scope.slice(0, -2).toLowerCase())));
 
-	const teamsPromise = (async () => {
-		const teams: string[] = [];
-		for (let page = 1; ; page++) {
-			const result = await client.get<RawTeam[]>(`/user/teams?per_page=100&page=${page}`, { headers });
-			teams.push(...result.map(team => `${team.organization.login}/${team.slug}`));
-			if (result.length < 100) return Array.from(new Set(teams)).sort((a, b) => a.localeCompare(b));
-		}
-	})();
 	const [viewer, teams, owners] = await Promise.all([
 		client.get<{ login: string }>('/user', { headers }),
-		teamsPromise,
+		fetchGitHubTeams(client, headers),
 		Promise.all(wildcardOwners.map(owner => client.get<RawOwner>(`/users/${encodeURIComponent(owner)}`, { headers }))),
 	]);
 
@@ -166,7 +167,7 @@ export function createGitHubClient(options: GitHubClientOptions) {
 
 				const search: NonNullable<SearchResponse['data']>['search'] = response.data?.search;
 				if (!search) break;
-				pullRequests.push(...search.nodes.filter(pullRequest => pullRequest.__typename === 'PullRequest'));
+				pullRequests.push(...search.nodes.filter((pullRequest): pullRequest is RawPullRequest => pullRequest?.__typename === 'PullRequest'));
 
 				hasNextPage = search.pageInfo.hasNextPage && !!search.pageInfo.endCursor;
 				cursor = search.pageInfo.endCursor;

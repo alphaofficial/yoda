@@ -19,6 +19,10 @@ export async function applyInertia(req: Request, res: Response, next: NextFuncti
 		isAuthenticated,
 		user: user ? { id: user.id, name: user.name, email: user.email } : null,
 	});
+	inertia.flash({
+		message: req.session.flash?.message ?? null,
+	});
+	delete req.session.flash;
 
 	req.inertia = inertia;
 

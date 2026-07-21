@@ -16,7 +16,7 @@ vi.mock('@/integrations/github', () => ({
 }));
 
 vi.mock('@/repositories/DashboardRepository', () => ({
-	createDashboardRepository: vi.fn(() => ({ getSettings: mocks.getSettings })),
+	DashboardRepository: Object.freeze({ getSettings: mocks.getSettings }),
 }));
 
 vi.mock('@/config/variables', () => ({

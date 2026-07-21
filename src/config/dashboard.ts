@@ -13,6 +13,7 @@ const DASHBOARD_CONFIG_PATH = variables.DASHBOARD_CONFIG_PATH;
 
 const ID_REGEX = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const LABEL_MAX_LENGTH = 60;
+const SHORTCUT_EMOJI_MAX_LENGTH = 16;
 const DISPLAY_NAME_MAX_LENGTH = 60;
 const VALID_PROTOCOLS = ['http:', 'https:', 'obsidian:'];
 
@@ -98,6 +99,15 @@ function validateShortcutUrl(urlString: string): void {
 	if (url.username || url.password) {
 		throw new ShortcutValidationError('URL must not contain credentials', { url: urlString });
 	}
+}
+
+function normalizeShortcutEmoji(value: unknown, ErrorClass: typeof DashboardConfigError | typeof ShortcutValidationError): string | null {
+	if (value === undefined || value === null) return null;
+	if (typeof value !== 'string') throw new ErrorClass('Shortcut emoji must be a string', { emoji: String(value) });
+	const emoji = value.trim();
+	if (!emoji) return null;
+	if (emoji.length > SHORTCUT_EMOJI_MAX_LENGTH) throw new ErrorClass('Shortcut emoji is too long', { emoji });
+	return emoji;
 }
 
 function validateUrl(urlString: string): void {
@@ -231,6 +241,7 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 				throw new DashboardConfigError('Shortcut URL is required');
 			}
 			validateUrl(s.url);
+			normalizeShortcutEmoji(s.emoji, DashboardConfigError);
 		}
 	}
 
@@ -245,13 +256,14 @@ export function validateDashboardConfig(config: unknown): DashboardConfig {
 			repositoryScopes: repositoryScopes as string[],
 			windowDays: typeof gh.windowDays === 'number' && Number.isInteger(gh.windowDays) && gh.windowDays >= 1 && gh.windowDays <= 30 ? gh.windowDays : 7,
 		},
-		shortcutGroups: (shortcutGroups as Array<{ id: string; label: string; shortcuts: Array<{ id: string; label: string; url: string }> }>).map(group => ({
+		shortcutGroups: (shortcutGroups as Array<{ id: string; label: string; shortcuts: Array<{ id: string; label: string; url: string; emoji?: string | null }> }>).map(group => ({
 			id: group.id,
 			label: group.label,
 			shortcuts: group.shortcuts.map(shortcut => ({
 				id: shortcut.id,
 				label: shortcut.label,
 				url: shortcut.url,
+				emoji: normalizeShortcutEmoji(shortcut.emoji, DashboardConfigError),
 			})),
 		})),
 	};
@@ -334,6 +346,7 @@ export function validateShortcutInput(input: unknown): AddShortcutInput {
 		throw new ShortcutValidationError('url is required', { url: 'Required' });
 	}
 	validateShortcutUrl(i.url);
+	const emoji = normalizeShortcutEmoji(i.emoji, ShortcutValidationError);
 
 	if (i.position !== undefined && (typeof i.position !== 'number' || !Number.isInteger(i.position))) {
 		throw new ShortcutValidationError('position must be an integer', { position: 'Must be an integer' });
@@ -343,6 +356,7 @@ export function validateShortcutInput(input: unknown): AddShortcutInput {
 		groupId: i.groupId,
 		label: i.label.trim(),
 		url: i.url,
+		emoji,
 		position: i.position as number | undefined,
 	};
 }
@@ -370,6 +384,7 @@ export async function addShortcut(
 		id,
 		label: validated.label,
 		url: validated.url,
+		emoji: validated.emoji ?? null,
 	};
 
 	group.shortcuts.splice(clampedPosition, 0, shortcut);

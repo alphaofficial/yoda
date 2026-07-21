@@ -4,7 +4,8 @@ import variables from '@/config/variables';
 import { createGitHubClient, discoverGitHubPullRequestContext, discoverGitHubRepositories } from '@/integrations/github';
 import { PinoLogger } from '@/logger/pinoLogger';
 import { Cache } from '@/primitives/cache';
-import { createDashboardRepository } from '@/repositories/DashboardRepository';
+import { DashboardRepository } from '@/repositories/DashboardRepository';
+import { ShortcutValidationError } from '@/types/dashboard';
 import type {
 	AddShortcutInput,
 	DashboardConfig,
@@ -52,6 +53,7 @@ function shortcutGroupsFromSettings(settings: DashboardConfig): ShortcutGroup[] 
 			id: shortcut.id,
 			label: shortcut.label,
 			url: shortcut.url,
+			emoji: shortcut.emoji ?? null,
 		})),
 	}));
 }
@@ -194,7 +196,7 @@ function buildDashboard(settings: DashboardConfig, pullRequestData: CachedPullRe
 }
 
 async function loadDashboard(db: EntityManager, currentDateTime: Date, forceRefresh: boolean): Promise<DashboardResponse> {
-	const settings = await createDashboardRepository(db).getSettings();
+	const settings = await DashboardRepository.getSettings(db);
 	const pullRequests = await getPullRequests(settings, currentDateTime, forceRefresh);
 	return buildDashboard(settings, pullRequests, currentDateTime);
 }
@@ -208,44 +210,70 @@ async function refreshPullRequests(db: EntityManager, currentDateTime: Date): Pr
 }
 
 async function settings(db: EntityManager): Promise<DashboardConfig> {
-	return createDashboardRepository(db).getSettings();
+	return DashboardRepository.getSettings(db);
 }
 
 async function githubRepositories(db: EntityManager, refresh: boolean): Promise<GitHubRepositoryCatalog | null> {
-	const config = await createDashboardRepository(db).getSettings();
+	const config = await DashboardRepository.getSettings(db);
 	return config.githubToken ? getGitHubRepositoryCatalog(config.githubToken, refresh) : null;
 }
 
-async function updateSettings(db: EntityManager, input: Parameters<ReturnType<typeof createDashboardRepository>['updateSettings']>[0] & { repositoryScopes?: string[] }): Promise<DashboardConfig> {
-	const repository = createDashboardRepository(db);
-	const updated = await repository.updateSettings(input);
+async function updateSettings(db: EntityManager, input: Parameters<typeof DashboardRepository.updateSettings>[1] & { repositoryScopes?: string[] }): Promise<DashboardConfig> {
+	const updated = await DashboardRepository.updateSettings(db, input);
 	if (!Array.isArray(input.repositoryScopes)) return updated;
-	await repository.setRepositoryScopes(input.repositoryScopes);
-	return repository.getSettings();
+	await DashboardRepository.setRepositoryScopes(db, input.repositoryScopes);
+	return DashboardRepository.getSettings(db);
 }
 
 async function addShortcut(db: EntityManager, input: AddShortcutInput) {
-	return createDashboardRepository(db).addShortcut(input);
+	try {
+		return [await DashboardRepository.addShortcut(db, input), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]) {
-	return createDashboardRepository(db).addShortcuts(inputs);
+	try {
+		return [await DashboardRepository.addShortcuts(db, inputs), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [0, error] as const;
+		throw error;
+	}
 }
 
-async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }) {
-	return createDashboardRepository(db).updateShortcut(id, input);
+async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string; emoji?: string | null }) {
+	try {
+		return [await DashboardRepository.updateShortcut(db, id, input), null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function deleteShortcut(db: EntityManager, id: string) {
-	return createDashboardRepository(db).deleteShortcut(id);
+	try {
+		await DashboardRepository.deleteShortcut(db, id);
+		return [true, null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function reorderShortcuts(db: EntityManager, groupId: string, shortcutIds: string[]) {
-	return createDashboardRepository(db).reorderShortcuts(groupId, shortcutIds);
+	try {
+		await DashboardRepository.reorderShortcuts(db, groupId, shortcutIds);
+		return [true, null] as const;
+	} catch (error) {
+		if (error instanceof ShortcutValidationError) return [null, error] as const;
+		throw error;
+	}
 }
 
 async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupConfig[]) {
-	return createDashboardRepository(db).importShortcuts(shortcutGroups);
+	return DashboardRepository.importShortcuts(db, shortcutGroups);
 }
 
 export const dashboard = Object.freeze({

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { createBackup, exportShortcuts, importShortcuts } from '@/controllers/settings';
+import { applyBackup, createBackup, exportShortcuts, importShortcuts } from '@/controllers/settings';
 
 const settingsMocks = vi.hoisted(() => ({
 	getSettings: vi.fn(),
@@ -10,6 +10,7 @@ const settingsMocks = vi.hoisted(() => ({
 
 const backupMocks = vi.hoisted(() => ({
 	create: vi.fn(),
+	restore: vi.fn(),
 }));
 
 vi.mock('@/core/dashboard', () => ({
@@ -22,6 +23,7 @@ vi.mock('@/core/dashboard', () => ({
 vi.mock('@/core/backup', () => ({
 	createDatabaseBackup: backupMocks.create,
 	getBackupStatus: vi.fn().mockResolvedValue({ count: 0, lastBackupAt: null }),
+	queueDatabaseBackupRestore: backupMocks.restore,
 }));
 
 vi.mock('@/config/variables', () => ({
@@ -60,6 +62,7 @@ function createApp() {
 	app.get('/settings/shortcuts/export', exportShortcuts);
 	app.post('/settings/shortcuts/import', importShortcuts);
 	app.post('/settings/backups', createBackup);
+	app.post('/settings/backups/apply', applyBackup);
 	return app;
 }
 
@@ -108,5 +111,15 @@ describe('shortcut settings transfer routes', () => {
 		expect(response.status).toBe(303);
 		expect(response.headers.location).toBe('/settings?section=backups');
 		expect(backupMocks.create).toHaveBeenCalledWith(expect.any(Object), 30, expect.any(Date), undefined, true);
+	});
+
+	it('queues a database backup restore', async () => {
+		const response = await request(createApp())
+			.post('/settings/backups/apply')
+			.send({ fileName: 'yoda-2026-07-19T11-30-00.000Z.db' });
+
+		expect(response.status).toBe(303);
+		expect(response.headers.location).toBe('/settings?section=backups');
+		expect(backupMocks.restore).toHaveBeenCalledWith(expect.any(Object), 'yoda-2026-07-19T11-30-00.000Z.db');
 	});
 });

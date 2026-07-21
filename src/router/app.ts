@@ -43,7 +43,14 @@ export async function createApp() {
 	 */
 	app.use(
 		helmet({
-			contentSecurityPolicy: variables.NODE_ENV === 'production' ? undefined : false,
+			contentSecurityPolicy: variables.NODE_ENV === 'production'
+				? {
+					directives: {
+						'img-src': ["'self'", 'data:', 'https:'],
+						'upgrade-insecure-requests': variables.APP_URL.startsWith('https:') ? [] : null,
+					},
+				}
+				: false,
 		}),
 	);
 
@@ -83,7 +90,7 @@ export async function createApp() {
 			resave: false,
 			saveUninitialized: false,
 			cookie: {
-				secure: variables.NODE_ENV === 'production',
+				secure: 'auto',
 				httpOnly: true,
 				sameSite: 'lax',
 				maxAge: variables.SESSION_MAX_AGE,

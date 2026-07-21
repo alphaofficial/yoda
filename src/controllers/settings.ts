@@ -1,10 +1,13 @@
 import { type Request, type Response } from 'express';
+import { spawn } from 'node:child_process';
 import { dashboard } from '@/core/dashboard';
-import { createDatabaseBackup, getBackupStatus } from '@/core/backup';
+import { createDatabaseBackup, getBackupStatus, queueDatabaseBackupRestore } from '@/core/backup';
+import { messages } from '@/config/messages';
 import { createShortcutSettingsExport, validateShortcutSettingsImport } from '@/config/dashboard';
 import { DashboardConfigError } from '@/types/dashboard';
 import type { DashboardConfig } from '@/types/dashboard';
-import { consumeSettingsFeedback, redirectToSettings, type SettingsSection } from '@/controllers/settingsRedirect';
+
+export type SettingsSection = 'general' | 'github' | 'shortcuts' | 'backups';
 
 function settingsResponse(settings: DashboardConfig) {
 	return {
@@ -32,13 +35,12 @@ export async function settingsIndex(req: Request, res: Response) {
 		try {
 			catalog = await dashboard.githubRepositories(req.ctx.db, req.query.refresh === '1');
 		} catch (error) {
-			repositoryError = error instanceof Error ? error.message : 'Could not load repositories from GitHub.';
+			repositoryError = error instanceof Error ? error.message : messages.github.loadRepositoriesFailed;
 		}
 	}
 	return res.render('Settings', {
 		theme: settings.theme ?? 'light',
 		activeSection,
-		feedback: consumeSettingsFeedback(req),
 		repositoryCatalog: catalog ? {
 			...catalog,
 			selectedScopes: settings.github.repositoryScopes.length > 0 ? settings.github.repositoryScopes : catalog.defaultScopes,
@@ -55,13 +57,15 @@ export async function updateSettings(req: Request, res: Response) {
 	try {
 		await dashboard.updateSettings(req.ctx.db, req.body);
 		const message = section === 'github'
-			? 'GitHub settings saved.'
-			: section === 'shortcuts' ? 'Quick link limit saved.'
-				: section === 'backups' ? 'Backup settings saved.' : 'General settings saved.';
-		return redirectToSettings(req, res, section, { type: 'success', message });
+			? messages.github.settingsSaved
+			: section === 'shortcuts' ? messages.shortcuts.limitSaved
+				: section === 'backups' ? messages.backup.settingsSaved : messages.settings.generalSaved;
+		req.session.flash = { message };
+		return res.redirect(303, `/settings?section=${section}`);
 	} catch (error) {
 		if (error instanceof DashboardConfigError) {
-			return redirectToSettings(req, res, section, { type: 'error', message: error.message });
+			req.session.flash = { message: error.message };
+			return res.redirect(303, `/settings?section=${section}`);
 		}
 		throw error;
 	}
@@ -77,10 +81,39 @@ export async function createBackup(req: Request, res: Response) {
 			undefined,
 			(settings.backupIntervalHours ?? 24) !== 0,
 		);
-		return redirectToSettings(req, res, 'backups', { type: 'success', message: 'Backup created.' });
+		req.session.flash = { message: messages.backup.created };
+		return res.redirect(303, '/settings?section=backups');
 	} catch (error) {
-		const message = error instanceof Error ? error.message : 'Could not create backup.';
-		return redirectToSettings(req, res, 'backups', { type: 'error', message });
+		const message = error instanceof Error ? error.message : messages.backup.createFailed;
+		req.session.flash = { message };
+		return res.redirect(303, '/settings?section=backups');
+	}
+}
+
+function restartProcessForBackupRestore(req: Request): void {
+	if (process.env.NODE_ENV === 'test') return;
+	setTimeout(() => {
+		req.ctx.logger.info({ scope: 'applyBackup', message: 'Restarting process to apply database backup restore' });
+		if (process.env.pm_id !== undefined) {
+			const child = spawn('pm2', ['kill'], { detached: true, stdio: 'ignore' });
+			child.unref();
+			return;
+		}
+		process.kill(process.pid, 'SIGTERM');
+	}, 250).unref();
+}
+
+export async function applyBackup(req: Request, res: Response) {
+	try {
+		const fileName = typeof req.body.fileName === 'string' ? req.body.fileName : '';
+		await queueDatabaseBackupRestore(req.ctx.db, fileName);
+		req.session.flash = { message: messages.backup.restoreQueued };
+		res.on('finish', () => restartProcessForBackupRestore(req));
+		return res.redirect(303, '/settings?section=backups');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : messages.backup.restoreFailed;
+		req.session.flash = { message };
+		return res.redirect(303, '/settings?section=backups');
 	}
 }
 
@@ -96,10 +129,12 @@ export async function importShortcuts(req: Request, res: Response) {
 	try {
 		const imported = validateShortcutSettingsImport(req.body);
 		await dashboard.importShortcuts(req.ctx.db, imported);
-		return redirectToSettings(req, res, 'shortcuts', { type: 'success', message: 'Quick links imported.' });
+		req.session.flash = { message: messages.shortcuts.imported };
+		return res.redirect(303, '/settings?section=shortcuts');
 	} catch (error) {
 		if (error instanceof DashboardConfigError) {
-			return redirectToSettings(req, res, 'shortcuts', { type: 'error', message: error.message });
+			req.session.flash = { message: error.message };
+			return res.redirect(303, '/settings?section=shortcuts');
 		}
 		throw error;
 	}

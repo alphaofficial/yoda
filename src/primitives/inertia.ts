@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import type { FlashData } from '@inertiajs/core';
 import * as fs from 'fs';
 import * as path from 'path';
 import { pathToFileURL } from 'url';
@@ -8,10 +9,6 @@ import variables from '@/config/variables';
 interface SharedData {
 	auth?: {
 		user?: any;
-	};
-	flash?: {
-		success?: string | null;
-		error?: string | null;
 	};
 	[key: string]: any;
 }
@@ -55,6 +52,7 @@ async function renderOnSsr(page: unknown): Promise<SsrPayload | null> {
 export class InertiaExpressAdapter {
 	private version: string;
 	private sharedData: SharedData = {};
+	private flashData: FlashData = {};
 
 	constructor(options: { version: string }) {
 		this.version = options.version;
@@ -68,6 +66,10 @@ export class InertiaExpressAdapter {
 		} else {
 			this.sharedData = { ...this.sharedData, ...keyOrData };
 		}
+	}
+
+	flash(data: FlashData): void {
+		this.flashData = { ...this.flashData, ...data };
 	}
 
 	render(req: Request, res: Response, component: string, props: any = {}) {
@@ -103,6 +105,7 @@ export class InertiaExpressAdapter {
 				props: responseProps,
 				url: req.originalUrl,
 				version: this.version,
+				flash: this.flashData,
 			});
 		}
 
@@ -111,6 +114,7 @@ export class InertiaExpressAdapter {
 			props: finalProps,
 			url: req.originalUrl,
 			version: this.version,
+			flash: this.flashData,
 		};
 	}
 }

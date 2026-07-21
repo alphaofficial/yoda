@@ -1,4 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from 'emoji-picker-react';
 import { useEffect, useReducer, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import {
 	ArrowLeft,
@@ -14,13 +15,16 @@ import {
 	Link2,
 	Pencil,
 	RefreshCw,
+	RotateCcw,
 	Search,
+	SmilePlus,
 	Settings2,
 	Trash2,
 	Upload,
 	X,
 } from 'lucide-react';
 import { Button } from '@/views/components/ui/button';
+import { messages } from '@/config/messages';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/views/components/ui/dialog';
 import { Input } from '@/views/components/ui/input';
 import { Label } from '@/views/components/ui/label';
@@ -47,10 +51,9 @@ interface SettingsData {
 interface PageProps extends InertiaPageProps {
 	applicationName: string;
 	activeSection: SettingsSection;
-	feedback: { type: 'success' | 'error'; message: string } | null;
 	repositoryCatalog: (GitHubRepositoryCatalog & { selectedScopes: string[] }) | null;
 	repositoryError: string;
-	backupStatus: { count: number; lastBackupAt: string | null };
+	backupStatus: { count: number; lastBackupAt: string | null; backups: { fileName: string; createdAt: string }[] };
 	settings: SettingsData;
 }
 
@@ -137,12 +140,54 @@ const sections = [
 	{ id: 'backups' as const, label: 'Backups', icon: DatabaseBackup },
 ];
 
+function emojiPickerTheme(theme: ThemePreference): Theme {
+	if (theme === 'dark') return Theme.DARK;
+	if (theme === 'light') return Theme.LIGHT;
+	return Theme.AUTO;
+}
+
+function EmojiPickerButton({ value, onChange, label, theme }: { value: string; onChange: (emoji: string) => void; label: string; theme: ThemePreference }) {
+	const [open, setOpen] = useState(false);
+
+	const chooseEmoji = (emoji: EmojiClickData) => {
+		onChange(emoji.emoji);
+		setOpen(false);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<Button type="button" variant="outline" size="icon-sm" className="size-10 shrink-0 rounded-md" onClick={() => setOpen(true)} aria-label={label} title={value ? `Emoji: ${value}` : 'Choose emoji'}>
+				{value ? <span className="text-xl leading-none">{value}</span> : <SmilePlus aria-hidden="true" />}
+			</Button>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>Choose shortcut emoji</DialogTitle>
+				</DialogHeader>
+				<EmojiPicker
+					onEmojiClick={chooseEmoji}
+					theme={emojiPickerTheme(theme)}
+					emojiStyle={EmojiStyle.NATIVE}
+					width="100%"
+					height={420}
+					previewConfig={{ showPreview: false }}
+					lazyLoadEmojis
+				/>
+				<div className="flex justify-end">
+					<Button type="button" variant="ghost" size="icon-sm" aria-label="Clear emoji" title="Clear emoji" onClick={() => { onChange(''); setOpen(false); }}>
+						<X />
+					</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
 function BookmarkImporter({
 	groups,
 	onImported,
 }: {
 	groups: ShortcutGroupConfig[];
-	onImported: (groups: ShortcutGroupConfig[], message: string) => void;
+	onImported: (groups: ShortcutGroupConfig[]) => void;
 }) {
 	const fileInputRef = useRef<HTMLInputElement>(null);
 	const [state, dispatch] = useReducer(bookmarkImporterReducer, {
@@ -175,7 +220,7 @@ function BookmarkImporter({
 			}));
 
 		if (parsed.length === 0) {
-			dispatch({ type: 'failed', message: 'No new web bookmarks were found in that file.' });
+			dispatch({ type: 'failed', message: messages.bookmarks.noneFound });
 			return;
 		}
 
@@ -199,17 +244,10 @@ function BookmarkImporter({
 			preserveScroll: true,
 			onSuccess: page => {
 				const nextProps = page.props as unknown as PageProps;
-				if (nextProps.feedback?.type === 'error') {
-					dispatch({ type: 'failed', message: nextProps.feedback.message });
-					return;
-				}
-				onImported(
-					nextProps.settings.shortcutGroups,
-					nextProps.feedback?.message ?? `${selected.length} bookmark${selected.length === 1 ? '' : 's'} imported.`,
-				);
+				onImported(nextProps.settings.shortcutGroups);
 				dispatch({ type: 'dialogChanged', open: false });
 			},
-			onError: () => dispatch({ type: 'failed', message: 'Could not import bookmarks.' }),
+			onError: () => dispatch({ type: 'failed', message: messages.bookmarks.importFailed }),
 			onFinish: () => dispatch({ type: 'importFinished' }),
 		});
 	};
@@ -267,7 +305,7 @@ function BookmarkImporter({
 						<div className="flex justify-end gap-2">
 							<Button type="button" variant="outline" onClick={() => dispatch({ type: 'dialogChanged', open: false })} disabled={importing}>Cancel</Button>
 							<Button type="button" onClick={importSelected} disabled={importing || selectedCount === 0}>
-								{importing ? 'Importing…' : `Import selected${selectedCount ? ` (${selectedCount})` : ''}`}
+								{`Import selected${selectedCount ? ` (${selectedCount})` : ''}`}
 							</Button>
 						</div>
 					</div>
@@ -373,15 +411,20 @@ export default function Settings() {
 	const [newShortcutGroupId, setNewShortcutGroupId] = useState(settings.shortcutGroups[0]?.id ?? '');
 	const [newShortcutLabel, setNewShortcutLabel] = useState('');
 	const [newShortcutUrl, setNewShortcutUrl] = useState('');
+	const [newShortcutEmoji, setNewShortcutEmoji] = useState('');
 	const [editingShortcutId, setEditingShortcutId] = useState<string | null>(null);
 	const [editingShortcutLabel, setEditingShortcutLabel] = useState('');
 	const [editingShortcutUrl, setEditingShortcutUrl] = useState('');
+	const [editingShortcutEmoji, setEditingShortcutEmoji] = useState('');
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [backingUp, setBackingUp] = useState(false);
-	const [message, setMessage] = useState(props.feedback?.message ?? '');
+	const [applyingBackup, setApplyingBackup] = useState<string | null>(null);
+	const [localMessage, setLocalMessage] = useState('');
 	const shortcutImportRef = useRef<HTMLInputElement>(null);
+	const flash = usePage().flash;
+	const flashMessage = flash.message ?? localMessage;
 
 	const applySettingsPage = (page: { props: unknown }) => {
 		const nextProps = page.props as PageProps;
@@ -399,7 +442,6 @@ export default function Settings() {
 		setRepositoryCatalog(nextProps.repositoryCatalog);
 		setSelectedRepositories(nextProps.repositoryCatalog?.selectedScopes ?? next.repositoryScopes);
 		setRepositoryError(nextProps.repositoryError);
-		if (nextProps.feedback) setMessage(nextProps.feedback.message);
 		return nextProps;
 	};
 
@@ -418,7 +460,7 @@ export default function Settings() {
 				setRepositoryError(nextProps.repositoryError);
 				window.history.replaceState(window.history.state, '', '/settings?section=github');
 			},
-			onError: () => setRepositoryError('Could not load repositories from GitHub.'),
+			onError: () => setRepositoryError(messages.github.loadRepositoriesFailed),
 			onFinish: () => setLoadingRepositories(false),
 		});
 	};
@@ -436,7 +478,7 @@ export default function Settings() {
 
 	const selectSection = (section: SettingsSection) => {
 		setActiveSection(section);
-		setMessage('');
+		setLocalMessage('');
 		const url = new URL(window.location.href);
 		url.searchParams.set('section', section);
 		window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
@@ -444,18 +486,18 @@ export default function Settings() {
 
 	const saveGeneral = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=general', { displayName, timeZone, timeFormat, theme }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save general settings.'),
+			onError: () => setLocalMessage(messages.settings.generalSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveGithub = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		const replacingToken = token.trim().length > 0;
 		router.patch('/settings?section=github', {
 			githubToken: token || undefined,
@@ -468,7 +510,7 @@ export default function Settings() {
 				setToken('');
 				router.prefetch('/', {}, { cacheFor: '30s' });
 			},
-			onError: () => setMessage('Could not save GitHub settings.'),
+			onError: () => setLocalMessage(messages.github.settingsSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -486,19 +528,21 @@ export default function Settings() {
 	const addShortcut = (event: FormEvent) => {
 		event.preventDefault();
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.post('/settings/shortcuts', {
 			groupId: newShortcutGroupId,
 			label: newShortcutLabel,
 			url: newShortcutUrl,
+			emoji: newShortcutEmoji || null,
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setNewShortcutLabel('');
 				setNewShortcutUrl('');
+				setNewShortcutEmoji('');
 			},
-			onError: () => setMessage('Could not add quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.addFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
@@ -507,76 +551,90 @@ export default function Settings() {
 		setEditingShortcutId(shortcut.id);
 		setEditingShortcutLabel(shortcut.label);
 		setEditingShortcutUrl(shortcut.url);
+		setEditingShortcutEmoji(shortcut.emoji ?? '');
 		setConfirmDeleteId(null);
 	};
 
 	const saveShortcut = (shortcutId: string) => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 			label: editingShortcutLabel,
 			url: editingShortcutUrl,
+			emoji: editingShortcutEmoji || null,
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setEditingShortcutId(null);
 			},
-			onError: () => setMessage('Could not update quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.updateFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const deleteShortcut = (shortcutId: string) => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.delete(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setConfirmDeleteId(null);
 			},
-			onError: () => setMessage('Could not remove quick link.'),
+			onError: () => setLocalMessage(messages.shortcuts.removeFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveShortcutLimit = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=shortcuts', { shortcutLimit }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save quick link limit.'),
+			onError: () => setLocalMessage(messages.shortcuts.limitSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const saveBackups = () => {
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		router.patch('/settings?section=backups', { backupIntervalHours, backupRetentionDays }, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not save backup settings.'),
+			onError: () => setLocalMessage(messages.backup.settingsSaveFailed),
 			onFinish: () => setSaving(false),
 		});
 	};
 
 	const backupNow = () => {
 		setBackingUp(true);
-		setMessage('');
+		setLocalMessage('');
 		router.post('/settings/backups', {}, {
 			preserveScroll: true,
 			onSuccess: applySettingsPage,
-			onError: () => setMessage('Could not create backup.'),
+			onError: () => setLocalMessage(messages.backup.createFailed),
 			onFinish: () => setBackingUp(false),
+		});
+	};
+
+	const applyBackup = (fileName: string) => {
+		if (!window.confirm('Apply this backup? The app will restart and the current database will be replaced.')) return;
+		setApplyingBackup(fileName);
+		setLocalMessage('');
+		router.post('/settings/backups/apply', { fileName }, {
+			preserveScroll: true,
+			onSuccess: applySettingsPage,
+			onError: () => setLocalMessage(messages.backup.restoreFailed),
+			onFinish: () => setApplyingBackup(null),
 		});
 	};
 
 	const persistOrder = async (groupId: string, nextShortcuts: ShortcutGroupConfig['shortcuts'], previousShortcuts: ShortcutGroupConfig['shortcuts']) => {
 		setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: nextShortcuts } : group));
-		setMessage('Saving quick link order…');
+		setLocalMessage(messages.shortcuts.orderSaving);
 		router.put('/settings/shortcuts/reorder', {
 			groupId,
 			shortcutIds: nextShortcuts.map(shortcut => shortcut.id),
@@ -585,7 +643,7 @@ export default function Settings() {
 			onSuccess: applySettingsPage,
 			onError: () => {
 				setGroups(current => current.map(group => group.id === groupId ? { ...group, shortcuts: previousShortcuts } : group));
-				setMessage('Could not save quick link order.');
+				setLocalMessage(messages.shortcuts.orderSaveFailed);
 			},
 		});
 	};
@@ -622,9 +680,8 @@ export default function Settings() {
 		void persistOrder(groupId, next, previous);
 	};
 
-	const handleImported = (nextGroups: ShortcutGroupConfig[], feedbackMessage: string) => {
+	const handleImported = (nextGroups: ShortcutGroupConfig[]) => {
 		setGroups(nextGroups);
-		setMessage(feedbackMessage);
 	};
 
 	const importShortcutSettings = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -632,7 +689,7 @@ export default function Settings() {
 		if (!file) return;
 
 		setSaving(true);
-		setMessage('');
+		setLocalMessage('');
 		try {
 			const imported = JSON.parse(await file.text());
 			router.post('/settings/shortcuts/import', imported, {
@@ -642,13 +699,13 @@ export default function Settings() {
 					setEditingShortcutId(null);
 					setConfirmDeleteId(null);
 				},
-				onError: () => setMessage('Could not import quick links.'),
+				onError: () => setLocalMessage(messages.shortcuts.importFailed),
 				onFinish: () => setSaving(false),
 			});
 		} catch (caught) {
-			setMessage(caught instanceof SyntaxError
-				? 'That file is not valid JSON.'
-				: caught instanceof Error ? caught.message : 'Could not import quick links.');
+			setLocalMessage(caught instanceof SyntaxError
+				? messages.shortcuts.invalidImportJson
+				: caught instanceof Error ? caught.message : messages.shortcuts.importFailed);
 			event.target.value = '';
 			setSaving(false);
 		}
@@ -665,6 +722,7 @@ export default function Settings() {
 		return owners;
 	}, new Map<string, GitHubRepository[]>());
 	const availableTimeZones = TIME_ZONES.includes(timeZone) ? TIME_ZONES : [timeZone, ...TIME_ZONES];
+	const backupDateFormatter = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: settings.timeZone });
 
 	return (
 		<>
@@ -672,13 +730,16 @@ export default function Settings() {
 			<div className="min-h-screen bg-background text-foreground antialiased">
 				<main className="settings-shell">
 					<header className="settings-header">
-					<Button variant="ghost" className="-ml-6" render={<Link href="/" prefetch="hover" />}>
+						<Button variant="ghost" className="-ml-6" render={<Link href="/" prefetch="hover" />}>
 							<ArrowLeft aria-hidden="true" />
 							Dashboard
 						</Button>
 						<div>
 							<h1 className="display-heading page-heading text-foreground">Settings</h1>
-							<p className="mt-1 text-muted-foreground">Configure your dashboard and integrations.</p>
+							<div className="settings-subtitle-row">
+								<p className="mt-1 text-muted-foreground">Configure your dashboard and integrations.</p>
+								{flashMessage && <p className="settings-message" role="status">{flashMessage}</p>}
+							</div>
 						</div>
 					</header>
 
@@ -746,7 +807,7 @@ export default function Settings() {
 											</div>
 										</div>
 									</div>
-									<div className="flex justify-end"><Button type="button" onClick={saveGeneral} disabled={saving}>{saving ? 'Saving…' : 'Save general settings'}</Button></div>
+									<div className="flex justify-end"><Button type="button" onClick={saveGeneral} disabled={saving}>Save general settings</Button></div>
 								</section>
 							)}
 
@@ -824,10 +885,7 @@ export default function Settings() {
 										)}
 									</div>
 									<div className="settings-save-action flex justify-end">
-										<Button type="button" className="relative" onClick={saveGithub} disabled={saving} aria-busy={saving}>
-											<span className={saving ? 'invisible' : undefined}>Save GitHub settings</span>
-											{saving && <span className="absolute inset-0 flex items-center justify-center">Saving…</span>}
-										</Button>
+										<Button type="button" onClick={saveGithub} disabled={saving} aria-busy={saving}>Save GitHub settings</Button>
 									</div>
 								</section>
 							)}
@@ -846,13 +904,13 @@ export default function Settings() {
 											<div className="min-w-0">
 												<p className="font-semibold">{props.backupStatus.count === 1 ? '1 backup' : `${props.backupStatus.count} backups`}</p>
 												<p className="text-sm text-muted-foreground">
-													{props.backupStatus.lastBackupAt
-														? `Latest ${new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short', timeZone: settings.timeZone }).format(new Date(props.backupStatus.lastBackupAt))}`
-														: 'No backup has been created yet.'}
-												</p>
+											{props.backupStatus.lastBackupAt
+												? `Latest ${backupDateFormatter.format(new Date(props.backupStatus.lastBackupAt))}`
+												: 'No backup has been created yet.'}
+										</p>
 											</div>
 										</div>
-										<Button type="button" variant="outline" onClick={backupNow} disabled={backingUp || saving}>{backingUp ? 'Creating…' : 'Back up now'}</Button>
+										<Button type="button" variant="outline" onClick={backupNow} disabled={backingUp || saving}>Back up now</Button>
 									</div>
 									<div className="settings-form-grid">
 										<div className="grid gap-2">
@@ -875,8 +933,38 @@ export default function Settings() {
 										</div>
 									</div>
 									<p className="-mt-3 text-sm text-muted-foreground">Expired backups are deleted automatically. The newest backup is always kept.</p>
+									<div className="grid gap-3 border-t pt-6">
+										<div>
+											<h3 className="font-semibold">Restore backup</h3>
+											<p className="mt-1 text-sm text-muted-foreground">Apply a backup by checkpointing the current WAL, restarting the app, and restoring the selected database before startup.</p>
+										</div>
+										{props.backupStatus.backups.length === 0 ? (
+											<p className="text-sm text-muted-foreground">No backups are available to restore.</p>
+										) : (
+											<div className="grid gap-2">
+												{props.backupStatus.backups.map(backup => (
+													<div key={backup.fileName} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/20 p-3">
+														<div className="min-w-0">
+															<p className="truncate font-medium">{backup.fileName}</p>
+															<p className="text-sm text-muted-foreground">{backupDateFormatter.format(new Date(backup.createdAt))}</p>
+														</div>
+														<Button
+															type="button"
+															variant="outline"
+															onClick={() => applyBackup(backup.fileName)}
+															disabled={saving || backingUp || applyingBackup !== null}
+															aria-busy={applyingBackup === backup.fileName}
+														>
+															<RotateCcw aria-hidden="true" />
+															{applyingBackup === backup.fileName ? 'Applying…' : 'Apply'}
+														</Button>
+													</div>
+												))}
+											</div>
+										)}
+									</div>
 									<div className="settings-save-action flex justify-end border-t pt-6">
-										<Button type="button" onClick={saveBackups} disabled={saving || backingUp}>{saving ? 'Saving…' : 'Save settings'}</Button>
+										<Button type="button" onClick={saveBackups} disabled={saving || backingUp}>Save settings</Button>
 									</div>
 								</section>
 							)}
@@ -903,14 +991,15 @@ export default function Settings() {
 											<h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
 											<div className="shortcut-sort-list" onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, group.id)}>
 												{group.id === newShortcutGroupId && (
-													<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
-														<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-3' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
-															{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Quick link group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
-															<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
-															<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
-														</div>
-														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>{saving ? 'Adding…' : 'Add'}</Button>
-													</form>
+											<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
+												<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(10rem,1fr)_minmax(12rem,1fr)]' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
+													{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Quick link group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
+													<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
+													<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
+												</div>
+												<EmojiPickerButton value={newShortcutEmoji} onChange={setNewShortcutEmoji} label="Choose quick link emoji" theme={theme} />
+												<Button type="submit" size="sm" className="shrink-0" disabled={saving}>Add</Button>
+											</form>
 												)}
 												{group.shortcuts.map((shortcut, index) => (
 													<div
@@ -925,14 +1014,17 @@ export default function Settings() {
 													>
 														<GripVertical className="shortcut-drag-handle" aria-hidden="true" />
 														{editingShortcutId === shortcut.id ? (
-															<div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-														<Input aria-label="Quick link label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
-														<Input aria-label="Quick link URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
-															</div>
-														) : (
-															<div className="min-w-0 flex-1"><p className="truncate font-medium">{shortcut.label}</p><p className="truncate text-sm text-muted-foreground">{shortcut.url}</p></div>
-														)}
-														<div className="flex shrink-0 gap-1">
+													<div className="flex min-w-0 flex-1 gap-2">
+														<div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+												<Input aria-label="Quick link label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
+												<Input aria-label="Quick link URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
+														</div>
+												<EmojiPickerButton value={editingShortcutEmoji} onChange={setEditingShortcutEmoji} label="Choose quick link emoji" theme={theme} />
+													</div>
+												) : (
+													<div className="min-w-0 flex-1"><p className="truncate font-medium">{shortcut.emoji ? `${shortcut.emoji} ` : ''}{shortcut.label}</p><p className="truncate text-sm text-muted-foreground">{shortcut.url}</p></div>
+												)}
+												<div className="flex shrink-0 items-center gap-1">
 															{editingShortcutId === shortcut.id ? <><Button type="button" size="sm" onClick={() => void saveShortcut(shortcut.id)} disabled={saving}>Save</Button><Button type="button" variant="ghost" size="icon-sm" aria-label="Cancel editing" onClick={() => setEditingShortcutId(null)}><X /></Button></> : <>
 																<Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${shortcut.label} up`} onClick={() => moveBy(group.id, shortcut.id, -1)} disabled={index === 0}><ChevronUp /></Button>
 																<Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${shortcut.label} down`} onClick={() => moveBy(group.id, shortcut.id, 1)} disabled={index === group.shortcuts.length - 1}><ChevronDown /></Button>
@@ -965,7 +1057,6 @@ export default function Settings() {
 								</section>
 							)}
 
-							{message && <p className="settings-message" role="status">{message}</p>}
 						</div>
 					</div>
 				</main>

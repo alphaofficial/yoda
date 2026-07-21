@@ -10,25 +10,42 @@ interface ShortcutPanelProps {
 }
 
 function ShortcutCard({ item }: { item: ShortcutItem }) {
-	const isObsidian = item.url.startsWith('obsidian:');
-	const [faviconFailed, setFaviconFailed] = useState(false);
 	let faviconUrl: string | null = null;
+	let fallbackFaviconUrl: string | null = null;
 	try {
 		const url = new URL(item.url);
-		faviconUrl = url.protocol === 'http:' || url.protocol === 'https:'
-			? `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`
-			: null;
+		if (url.protocol === 'http:' || url.protocol === 'https:') {
+			faviconUrl = `${url.origin}/favicon.ico`;
+			fallbackFaviconUrl = `https://www.google.com/s2/favicons?domain=${url.hostname}&sz=64`;
+		}
 	} catch {
 		faviconUrl = null;
 	}
 
 	const content = (
 		<Card className="flex flex-row items-center gap-3 px-4 py-4 shadow-sm transition-colors group-hover:bg-muted group-focus-visible:bg-muted sm:gap-4 sm:px-6">
-			<div className="flex size-5 shrink-0 items-center justify-center">
-				{faviconUrl && !faviconFailed ? (
-					<img src={faviconUrl} alt="" className="size-5 rounded-md" onError={() => setFaviconFailed(true)} loading="eager" decoding="async" />
+			<div className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-background shadow-xs">
+				{item.emoji ? (
+					<span className="text-xl leading-none" aria-hidden="true">{item.emoji}</span>
 				) : (
-					<Globe2 className="size-5 text-muted-foreground" aria-hidden="true" />
+					<Globe2 className="size-4 text-muted-foreground" aria-hidden="true" />
+				)}
+				{!item.emoji && faviconUrl && (
+					<img
+						src={faviconUrl}
+						alt=""
+						className="absolute inset-1 size-5 rounded-sm bg-background object-contain"
+						onError={event => {
+							if (fallbackFaviconUrl && event.currentTarget.dataset.fallback !== 'google') {
+								event.currentTarget.dataset.fallback = 'google';
+								event.currentTarget.src = fallbackFaviconUrl;
+								return;
+							}
+							event.currentTarget.hidden = true;
+						}}
+						loading="eager"
+						decoding="async"
+					/>
 				)}
 			</div>
 			<span className="min-w-0 flex-1 truncate font-medium text-foreground">{item.label}</span>
@@ -39,8 +56,8 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
 	return (
 		<a
 			href={item.url}
-			target={isObsidian ? '_self' : '_blank'}
-			rel={isObsidian ? 'noreferrer' : 'noreferrer noopener'}
+			target="_blank"
+			rel="noreferrer noopener"
 			className="group block rounded-lg no-underline outline-none"
 		>
 			{content}

@@ -1,5 +1,6 @@
 import 'dotenv-defaults/config';
 import variables from '@/config/variables';
+import { checkpointDatabase } from '@/core/backup';
 import { Bus } from '@/primitives/bus';
 import { shutdown } from '@/primitives/shutdown';
 import { createApp } from '@/router/app';
@@ -20,8 +21,8 @@ async function bootstrap() {
 
     /** Defines the cleanup functions for the application */
     const disposables = [
-      { async stop() { server.close(); } },
-      { async stop() { await ctx.db.getConnection().close(true) } }
+      { async stop() { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); } },
+      { async stop() { await checkpointDatabase(ctx.db); await ctx.db.getConnection().close(true) } }
     ];
 
     process.on('SIGTERM', () => void shutdown('SIGTERM', disposables));

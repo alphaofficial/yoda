@@ -111,13 +111,20 @@
     justify-self: start;
   }
 
+  .settings-subtitle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-md);
+    width: 100%;
+  }
+
   .settings-layout {
     display: grid;
     grid-template-columns: 220px minmax(0, 1fr);
     gap: var(--spacing-xl);
     align-items: start;
   }
-
   .settings-sidebar {
     position: sticky;
     top: var(--spacing-xl);
@@ -182,7 +189,6 @@
 
 
   .settings-message {
-    margin-top: var(--spacing-md);
     color: var(--muted-foreground);
     font-size: 0.875rem;
   }
