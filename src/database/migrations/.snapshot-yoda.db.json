@@ -405,6 +405,22 @@
           "enumItems": [],
           "mappedType": "text"
         },
+        "emoji": {
+          "name": "emoji",
+          "type": "text",
+          "unsigned": false,
+          "autoincrement": false,
+          "primary": false,
+          "nullable": true,
+          "unique": false,
+          "length": null,
+          "precision": null,
+          "scale": null,
+          "default": null,
+          "comment": null,
+          "enumItems": [],
+          "mappedType": "text"
+        },
         "position": {
           "name": "position",
           "type": "integer",

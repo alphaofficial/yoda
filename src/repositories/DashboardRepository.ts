@@ -32,6 +32,7 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 			id: shortcut.id,
 			label: shortcut.label,
 			url: shortcut.url,
+			emoji: shortcut.emoji ?? null,
 		});
 	}
 	if (groups.size === 0) groups.set('shortcuts', { id: 'shortcuts', label: 'Quick links', shortcuts: [] });
@@ -82,6 +83,7 @@ async function seedFromJsonIfEmpty(db: EntityManager, configPath: string = varia
 					groupLabel: group.label,
 					label: shortcut.label,
 					url: shortcut.url,
+					emoji: shortcut.emoji ?? null,
 					position: index,
 					createdAt: now,
 					updatedAt: now,
@@ -217,6 +219,7 @@ async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupC
 						|| target.groupLabel !== groupLabel
 						|| target.label !== shortcut.label
 						|| target.url !== shortcut.url
+						|| (target.emoji ?? null) !== (shortcut.emoji ?? null)
 						|| target.position !== position;
 					if (targetChanged) {
 						existingByName.delete(target.label.trim().toLowerCase());
@@ -224,6 +227,7 @@ async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupC
 						target.groupLabel = groupLabel;
 						target.label = shortcut.label;
 						target.url = shortcut.url;
+						target.emoji = shortcut.emoji ?? null;
 						target.position = position;
 						target.updatedAt = now;
 						existingByName.set(name, target);
@@ -240,6 +244,7 @@ async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupC
 					groupLabel,
 					label: shortcut.label,
 					url: shortcut.url,
+					emoji: shortcut.emoji ?? null,
 					position,
 					createdAt: now,
 					updatedAt: now,
@@ -281,19 +286,21 @@ async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupC
 		});
 }
 
-async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
+async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string; emoji?: string | null }): Promise<ShortcutConfig> {
 		const shortcut = await db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Quick link not found', { shortcutId: 'Quick link not found' });
 		const validated = validateShortcutInput({
 			groupId: shortcut.groupId,
 			label: input.label ?? shortcut.label,
 			url: input.url ?? shortcut.url,
+			emoji: input.emoji !== undefined ? input.emoji : shortcut.emoji ?? null,
 		});
 		shortcut.label = validated.label;
 		shortcut.url = validated.url;
+		shortcut.emoji = validated.emoji ?? null;
 		shortcut.updatedAt = new Date();
 		await db.flush();
-		return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
+		return { id: shortcut.id, label: shortcut.label, url: shortcut.url, emoji: shortcut.emoji ?? null };
 }
 
 async function deleteShortcut(db: EntityManager, id: string): Promise<void> {
@@ -316,9 +323,9 @@ async function addShortcut(db: EntityManager, input: AddShortcutInput): Promise<
 		const groupLabel = existing[0]?.groupLabel ?? 'Quick links';
 		const position = validated.position ?? existing.length;
 		const now = new Date();
-		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, position, createdAt: now, updatedAt: now });
+		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, emoji: validated.emoji ?? null, position, createdAt: now, updatedAt: now });
 		await db.persist(shortcut).flush();
-		return { id, label: validated.label, url: validated.url };
+		return { id, label: validated.label, url: validated.url, emoji: validated.emoji ?? null };
 }
 
 async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]): Promise<number> {
@@ -344,6 +351,7 @@ async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]): Prom
 					groupLabel: groupLabels.get(shortcut.groupId) ?? 'Quick links',
 					label: shortcut.label,
 					url: shortcut.url,
+					emoji: shortcut.emoji ?? null,
 					position,
 					createdAt: now,
 					updatedAt: now,
@@ -384,7 +392,7 @@ async function reorderShortcuts(db: EntityManager, groupId: string, shortcutIds:
 		await db.flush();
 		return shortcutIds.map(id => {
 			const shortcut = shortcutsById.get(id)!;
-			return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
+			return { id: shortcut.id, label: shortcut.label, url: shortcut.url, emoji: shortcut.emoji ?? null };
 		});
 }
 

@@ -24,13 +24,17 @@ function ShortcutCard({ item }: { item: ShortcutItem }) {
 
 	const content = (
 		<Card className="flex flex-row items-center gap-3 px-4 py-4 shadow-sm transition-colors group-hover:bg-muted group-focus-visible:bg-muted sm:gap-4 sm:px-6">
-			<div className="relative flex size-5 shrink-0 items-center justify-center">
-				<Globe2 className="size-5 text-muted-foreground" aria-hidden="true" />
-				{faviconUrl && (
+			<div className="relative flex size-7 shrink-0 items-center justify-center rounded-lg bg-background shadow-xs">
+				{item.emoji ? (
+					<span className="text-xl leading-none" aria-hidden="true">{item.emoji}</span>
+				) : (
+					<Globe2 className="size-4 text-muted-foreground" aria-hidden="true" />
+				)}
+				{!item.emoji && faviconUrl && (
 					<img
 						src={faviconUrl}
 						alt=""
-						className="absolute inset-0 size-5 rounded-md bg-background"
+						className="absolute inset-1 size-5 rounded-sm bg-background object-contain"
 						onError={event => {
 							if (fallbackFaviconUrl && event.currentTarget.dataset.fallback !== 'google') {
 								event.currentTarget.dataset.fallback = 'google';

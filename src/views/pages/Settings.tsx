@@ -1,4 +1,5 @@
 import { Head, Link, router, usePage } from '@inertiajs/react';
+import EmojiPicker, { EmojiStyle, Theme, type EmojiClickData } from 'emoji-picker-react';
 import { useEffect, useReducer, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from 'react';
 import {
 	ArrowLeft,
@@ -16,6 +17,7 @@ import {
 	RefreshCw,
 	RotateCcw,
 	Search,
+	SmilePlus,
 	Settings2,
 	Trash2,
 	Upload,
@@ -137,6 +139,48 @@ const sections = [
 	{ id: 'shortcuts' as const, label: 'Quick links', icon: Link2 },
 	{ id: 'backups' as const, label: 'Backups', icon: DatabaseBackup },
 ];
+
+function emojiPickerTheme(theme: ThemePreference): Theme {
+	if (theme === 'dark') return Theme.DARK;
+	if (theme === 'light') return Theme.LIGHT;
+	return Theme.AUTO;
+}
+
+function EmojiPickerButton({ value, onChange, label, theme }: { value: string; onChange: (emoji: string) => void; label: string; theme: ThemePreference }) {
+	const [open, setOpen] = useState(false);
+
+	const chooseEmoji = (emoji: EmojiClickData) => {
+		onChange(emoji.emoji);
+		setOpen(false);
+	};
+
+	return (
+		<Dialog open={open} onOpenChange={setOpen}>
+			<Button type="button" variant="outline" size="icon-sm" className="size-10 shrink-0 rounded-md" onClick={() => setOpen(true)} aria-label={label} title={value ? `Emoji: ${value}` : 'Choose emoji'}>
+				{value ? <span className="text-xl leading-none">{value}</span> : <SmilePlus aria-hidden="true" />}
+			</Button>
+			<DialogContent className="sm:max-w-md">
+				<DialogHeader>
+					<DialogTitle>Choose shortcut emoji</DialogTitle>
+				</DialogHeader>
+				<EmojiPicker
+					onEmojiClick={chooseEmoji}
+					theme={emojiPickerTheme(theme)}
+					emojiStyle={EmojiStyle.NATIVE}
+					width="100%"
+					height={420}
+					previewConfig={{ showPreview: false }}
+					lazyLoadEmojis
+				/>
+				<div className="flex justify-end">
+					<Button type="button" variant="ghost" size="icon-sm" aria-label="Clear emoji" title="Clear emoji" onClick={() => { onChange(''); setOpen(false); }}>
+						<X />
+					</Button>
+				</div>
+			</DialogContent>
+		</Dialog>
+	);
+}
 
 function BookmarkImporter({
 	groups,
@@ -367,9 +411,11 @@ export default function Settings() {
 	const [newShortcutGroupId, setNewShortcutGroupId] = useState(settings.shortcutGroups[0]?.id ?? '');
 	const [newShortcutLabel, setNewShortcutLabel] = useState('');
 	const [newShortcutUrl, setNewShortcutUrl] = useState('');
+	const [newShortcutEmoji, setNewShortcutEmoji] = useState('');
 	const [editingShortcutId, setEditingShortcutId] = useState<string | null>(null);
 	const [editingShortcutLabel, setEditingShortcutLabel] = useState('');
 	const [editingShortcutUrl, setEditingShortcutUrl] = useState('');
+	const [editingShortcutEmoji, setEditingShortcutEmoji] = useState('');
 	const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 	const [dragged, setDragged] = useState<{ groupId: string; shortcutId: string } | null>(null);
 	const [saving, setSaving] = useState(false);
@@ -487,12 +533,14 @@ export default function Settings() {
 			groupId: newShortcutGroupId,
 			label: newShortcutLabel,
 			url: newShortcutUrl,
+			emoji: newShortcutEmoji || null,
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {
 				applySettingsPage(page);
 				setNewShortcutLabel('');
 				setNewShortcutUrl('');
+				setNewShortcutEmoji('');
 			},
 			onError: () => setLocalMessage(messages.shortcuts.addFailed),
 			onFinish: () => setSaving(false),
@@ -503,6 +551,7 @@ export default function Settings() {
 		setEditingShortcutId(shortcut.id);
 		setEditingShortcutLabel(shortcut.label);
 		setEditingShortcutUrl(shortcut.url);
+		setEditingShortcutEmoji(shortcut.emoji ?? '');
 		setConfirmDeleteId(null);
 	};
 
@@ -512,6 +561,7 @@ export default function Settings() {
 		router.patch(`/settings/shortcuts/${encodeURIComponent(shortcutId)}`, {
 			label: editingShortcutLabel,
 			url: editingShortcutUrl,
+			emoji: editingShortcutEmoji || null,
 		}, {
 			preserveScroll: true,
 			onSuccess: page => {
@@ -941,14 +991,15 @@ export default function Settings() {
 											<h3 className="text-sm font-semibold text-muted-foreground">{group.label}</h3>
 											<div className="shortcut-sort-list" onDragOver={event => event.preventDefault()} onDrop={event => handleDrop(event, group.id)}>
 												{group.id === newShortcutGroupId && (
-													<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
-														<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-3' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
-															{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Quick link group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
-															<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
-															<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
-														</div>
-														<Button type="submit" size="sm" className="shrink-0" disabled={saving}>Add</Button>
-													</form>
+											<form onSubmit={addShortcut} className="shortcut-sort-item rounded-lg" data-static="true">
+												<div className={groups.length > 1 ? 'grid min-w-0 flex-1 gap-2 sm:grid-cols-[minmax(8rem,0.8fr)_minmax(10rem,1fr)_minmax(12rem,1fr)]' : 'grid min-w-0 flex-1 gap-2 sm:grid-cols-2'}>
+													{groups.length > 1 && <Select id="new-shortcut-group" aria-label="Quick link group" value={newShortcutGroupId} onChange={event => setNewShortcutGroupId(event.target.value)}>{groups.map(shortcutGroup => <option key={shortcutGroup.id} value={shortcutGroup.id}>{shortcutGroup.label}</option>)}</Select>}
+													<Input id="new-shortcut-label" aria-label="Quick link label" value={newShortcutLabel} onChange={event => setNewShortcutLabel(event.target.value)} placeholder="Label" maxLength={60} required />
+													<Input id="new-shortcut-url" aria-label="Quick link URL" value={newShortcutUrl} onChange={event => setNewShortcutUrl(event.target.value)} placeholder="https://example.com" required />
+												</div>
+												<EmojiPickerButton value={newShortcutEmoji} onChange={setNewShortcutEmoji} label="Choose quick link emoji" theme={theme} />
+												<Button type="submit" size="sm" className="shrink-0" disabled={saving}>Add</Button>
+											</form>
 												)}
 												{group.shortcuts.map((shortcut, index) => (
 													<div
@@ -963,14 +1014,17 @@ export default function Settings() {
 													>
 														<GripVertical className="shortcut-drag-handle" aria-hidden="true" />
 														{editingShortcutId === shortcut.id ? (
-															<div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
-														<Input aria-label="Quick link label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
-														<Input aria-label="Quick link URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
-															</div>
-														) : (
-															<div className="min-w-0 flex-1"><p className="truncate font-medium">{shortcut.label}</p><p className="truncate text-sm text-muted-foreground">{shortcut.url}</p></div>
-														)}
-														<div className="flex shrink-0 gap-1">
+													<div className="flex min-w-0 flex-1 gap-2">
+														<div className="grid min-w-0 flex-1 gap-2 sm:grid-cols-2">
+												<Input aria-label="Quick link label" value={editingShortcutLabel} onChange={event => setEditingShortcutLabel(event.target.value)} maxLength={60} />
+												<Input aria-label="Quick link URL" value={editingShortcutUrl} onChange={event => setEditingShortcutUrl(event.target.value)} />
+														</div>
+												<EmojiPickerButton value={editingShortcutEmoji} onChange={setEditingShortcutEmoji} label="Choose quick link emoji" theme={theme} />
+													</div>
+												) : (
+													<div className="min-w-0 flex-1"><p className="truncate font-medium">{shortcut.emoji ? `${shortcut.emoji} ` : ''}{shortcut.label}</p><p className="truncate text-sm text-muted-foreground">{shortcut.url}</p></div>
+												)}
+												<div className="flex shrink-0 items-center gap-1">
 															{editingShortcutId === shortcut.id ? <><Button type="button" size="sm" onClick={() => void saveShortcut(shortcut.id)} disabled={saving}>Save</Button><Button type="button" variant="ghost" size="icon-sm" aria-label="Cancel editing" onClick={() => setEditingShortcutId(null)}><X /></Button></> : <>
 																<Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${shortcut.label} up`} onClick={() => moveBy(group.id, shortcut.id, -1)} disabled={index === 0}><ChevronUp /></Button>
 																<Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${shortcut.label} down`} onClick={() => moveBy(group.id, shortcut.id, 1)} disabled={index === group.shortcuts.length - 1}><ChevronDown /></Button>

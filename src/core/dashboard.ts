@@ -53,6 +53,7 @@ function shortcutGroupsFromSettings(settings: DashboardConfig): ShortcutGroup[] 
 			id: shortcut.id,
 			label: shortcut.label,
 			url: shortcut.url,
+			emoji: shortcut.emoji ?? null,
 		})),
 	}));
 }
@@ -242,7 +243,7 @@ async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]) {
 	}
 }
 
-async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }) {
+async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string; emoji?: string | null }) {
 	try {
 		return [await DashboardRepository.updateShortcut(db, id, input), null] as const;
 	} catch (error) {
