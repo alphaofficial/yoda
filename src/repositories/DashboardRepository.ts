@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { EntityManager } from '@mikro-orm/core';
+import type { EntityManager } from '@mikro-orm/core';
 import { loadDashboardConfig, validateShortcutInput } from '@/config/dashboard';
 import variables from '@/config/variables';
 import { DashboardSettings } from '@/models/DashboardSettings';
@@ -50,8 +50,7 @@ function toSettings(settings: DashboardSettings, shortcuts: DashboardShortcut[])
 	};
 }
 
-export function createDashboardRepository(db: EntityManager) {
-	async function seedFromJsonIfEmpty(configPath: string = variables.DASHBOARD_CONFIG_PATH): Promise<boolean> {
+async function seedFromJsonIfEmpty(db: EntityManager, configPath: string = variables.DASHBOARD_CONFIG_PATH): Promise<boolean> {
 		const existing = await db.findOne(DashboardSettings, { id: 'default' });
 		if (existing) return false;
 
@@ -91,24 +90,24 @@ export function createDashboardRepository(db: EntityManager) {
 		}
 		await db.persist([settings, ...shortcuts]).flush();
 		return true;
-	}
+}
 
-	async function getSettings(): Promise<DashboardConfig> {
+async function getSettings(db: EntityManager): Promise<DashboardConfig> {
 		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
 		const shortcuts = await db.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
 		return toSettings(settings, shortcuts);
-	}
+}
 
-	async function getBackupPolicy(): Promise<{ intervalHours: number; retentionDays: number } | null> {
+async function getBackupPolicy(db: EntityManager): Promise<{ intervalHours: number; retentionDays: number } | null> {
 		const settings = await db.findOne(DashboardSettings, { id: 'default' });
 		if (!settings) return null;
 		return {
 			intervalHours: settings.backupIntervalHours ?? 24,
 			retentionDays: settings.backupRetentionDays ?? 30,
 		};
-	}
+}
 
-	async function updateSettings(input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; backupIntervalHours?: number; backupRetentionDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
+async function updateSettings(db: EntityManager, input: { displayName?: string; timeZone?: string; timeFormat?: TimeFormat; theme?: ThemePreference; shortcutLimit?: number; pullRequestWindowDays?: number; backupIntervalHours?: number; backupRetentionDays?: number; githubToken?: string | null }): Promise<DashboardConfig> {
 		const settings = await db.findOneOrFail(DashboardSettings, { id: 'default' });
 		settings.displayName = typeof input.displayName === 'string' ? input.displayName.trim() : settings.displayName;
 		settings.timeZone = typeof input.timeZone === 'string' ? input.timeZone : settings.timeZone;
@@ -129,10 +128,10 @@ export function createDashboardRepository(db: EntityManager) {
 			: settings.backupRetentionDays;
 		settings.githubToken = input.githubToken !== undefined ? (input.githubToken ? input.githubToken.trim() : null) : settings.githubToken ?? null;
 		await db.flush();
-		return getSettings();
-	}
+		return getSettings(db);
+}
 
-	async function setRepositoryScopes(names: string[]): Promise<string[]> {
+async function setRepositoryScopes(db: EntityManager, names: string[]): Promise<string[]> {
 		const repositoryScopes = Array.from(new Set(names
 			.map(name => name.trim())
 			.filter(name => /^[A-Za-z0-9_.-]+\/(?:[A-Za-z0-9_.-]+|\*)$/.test(name))));
@@ -140,9 +139,9 @@ export function createDashboardRepository(db: EntityManager) {
 		settings.repositoryScopes = JSON.stringify(repositoryScopes);
 		await db.flush();
 		return repositoryScopes;
-	}
+}
 
-	async function importShortcuts(shortcutGroups: ShortcutGroupConfig[]): Promise<DashboardConfig> {
+async function importShortcuts(db: EntityManager, shortcutGroups: ShortcutGroupConfig[]): Promise<DashboardConfig> {
 		return db.transactional(async transactionalDb => {
 			const settings = await transactionalDb.findOneOrFail(DashboardSettings, { id: 'default' });
 			const existing = await transactionalDb.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
@@ -280,9 +279,9 @@ export function createDashboardRepository(db: EntityManager) {
 			if (changed) await transactionalDb.flush();
 			return toSettings(settings, shortcuts);
 		});
-	}
+}
 
-	async function updateShortcut(id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
+async function updateShortcut(db: EntityManager, id: string, input: { label?: string; url?: string }): Promise<ShortcutConfig> {
 		const shortcut = await db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Quick link not found', { shortcutId: 'Quick link not found' });
 		const validated = validateShortcutInput({
@@ -295,9 +294,9 @@ export function createDashboardRepository(db: EntityManager) {
 		shortcut.updatedAt = new Date();
 		await db.flush();
 		return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
-	}
+}
 
-	async function deleteShortcut(id: string): Promise<void> {
+async function deleteShortcut(db: EntityManager, id: string): Promise<void> {
 		const shortcut = await db.findOne(DashboardShortcut, { id });
 		if (!shortcut) throw new ShortcutValidationError('Quick link not found', { shortcutId: 'Quick link not found' });
 		const groupId = shortcut.groupId;
@@ -308,9 +307,9 @@ export function createDashboardRepository(db: EntityManager) {
 			item.updatedAt = new Date();
 		});
 		await db.flush();
-	}
+}
 
-	async function addShortcut(input: AddShortcutInput): Promise<ShortcutConfig> {
+async function addShortcut(db: EntityManager, input: AddShortcutInput): Promise<ShortcutConfig> {
 		const validated = validateShortcutInput(input);
 		const existing = await db.find(DashboardShortcut, { groupId: validated.groupId }, { orderBy: { position: 'asc' } });
 		const id = `${slugId(validated.label)}-${randomUUID().slice(0, 6)}`;
@@ -320,9 +319,9 @@ export function createDashboardRepository(db: EntityManager) {
 		const shortcut = db.create(DashboardShortcut, { id, groupId: validated.groupId, groupLabel, label: validated.label, url: validated.url, position, createdAt: now, updatedAt: now });
 		await db.persist(shortcut).flush();
 		return { id, label: validated.label, url: validated.url };
-	}
+}
 
-	async function addShortcuts(inputs: AddShortcutInput[]): Promise<number> {
+async function addShortcuts(db: EntityManager, inputs: AddShortcutInput[]): Promise<number> {
 		const validated = inputs.map(validateShortcutInput);
 		return db.transactional(async transactionalDb => {
 			const existing = await transactionalDb.find(DashboardShortcut, {}, { orderBy: { groupId: 'asc', position: 'asc' } });
@@ -356,9 +355,9 @@ export function createDashboardRepository(db: EntityManager) {
 			}
 			return additions.length;
 		});
-	}
+}
 
-	async function reorderShortcuts(groupId: string, shortcutIds: string[]): Promise<ShortcutConfig[]> {
+async function reorderShortcuts(db: EntityManager, groupId: string, shortcutIds: string[]): Promise<ShortcutConfig[]> {
 		const shortcuts = await db.find(DashboardShortcut, { groupId }, { orderBy: { position: 'asc' } });
 		const currentIds = new Set(shortcuts.map(shortcut => shortcut.id));
 		const requestedIds = new Set(shortcutIds);
@@ -387,21 +386,18 @@ export function createDashboardRepository(db: EntityManager) {
 			const shortcut = shortcutsById.get(id)!;
 			return { id: shortcut.id, label: shortcut.label, url: shortcut.url };
 		});
-	}
-
-	return {
-		seedFromJsonIfEmpty,
-		getSettings,
-		getBackupPolicy,
-		updateSettings,
-		setRepositoryScopes,
-		importShortcuts,
-		updateShortcut,
-		deleteShortcut,
-		addShortcut,
-		addShortcuts,
-		reorderShortcuts,
-	};
 }
 
-export type DashboardRepository = ReturnType<typeof createDashboardRepository>;
+export const DashboardRepository = Object.freeze({
+	seedFromJsonIfEmpty,
+	getSettings,
+	getBackupPolicy,
+	updateSettings,
+	setRepositoryScopes,
+	importShortcuts,
+	updateShortcut,
+	deleteShortcut,
+	addShortcut,
+	addShortcuts,
+	reorderShortcuts,
+});

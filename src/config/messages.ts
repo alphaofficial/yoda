@@ -2,6 +2,8 @@ export const messages = {
 	backup: {
 		created: 'Backup created.',
 		createFailed: 'Could not create backup.',
+		restoreFailed: 'Could not apply backup.',
+		restoreQueued: 'Backup restore queued. The app is restarting to apply it.',
 		settingsSaved: 'Backup settings saved.',
 		settingsSaveFailed: 'Could not save backup settings.',
 	},

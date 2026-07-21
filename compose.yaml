@@ -15,8 +15,6 @@ services:
       - "3336:3336"
     volumes:
       - ./yoda.db:/data/yoda.db
-      - ./yoda.db-wal:/data/yoda.db-wal
-      - ./yoda.db-shm:/data/yoda.db-shm
       - ./backups:/backups
     healthcheck:
       test:

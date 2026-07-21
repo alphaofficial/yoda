@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createDatabaseBackup, listDatabaseBackups, pruneDatabaseBackups, runScheduledDatabaseBackup } from '@/core/backup';
+import { applyPendingDatabaseBackupRestore, createDatabaseBackup, listDatabaseBackups, pruneDatabaseBackups, queueDatabaseBackupRestore, runScheduledDatabaseBackup } from '@/core/backup';
 
 const temporaryDirectories: string[] = [];
 
@@ -95,5 +95,37 @@ describe('database backups', () => {
 
 		expect(execute).not.toHaveBeenCalled();
 		expect((await listDatabaseBackups(directory)).map(backup => backup.path)).toEqual([existing]);
+	});
+
+	it('queues a backup restore after checkpointing the current database', async () => {
+		const directory = await temporaryDirectory();
+		const backup = join(directory, 'yoda-2026-07-19T11-30-00.000Z.db');
+		await writeFile(backup, 'backup');
+		const execute = vi.fn();
+		const db = { getConnection: () => ({ execute }) };
+
+		await queueDatabaseBackupRestore(db as never, 'yoda-2026-07-19T11-30-00.000Z.db', directory);
+
+		expect(execute).toHaveBeenCalledWith('pragma wal_checkpoint(truncate)');
+		expect(JSON.parse(await readFile(join(directory, '.pending-restore.json'), 'utf8'))).toMatchObject({ fileName: 'yoda-2026-07-19T11-30-00.000Z.db' });
+	});
+
+	it('applies a queued backup restore before startup', async () => {
+		const directory = await temporaryDirectory();
+		const backup = join(directory, 'yoda-2026-07-19T11-30-00.000Z.db');
+		const databasePath = join(directory, 'live', 'yoda.db');
+		await writeFile(backup, 'restored database');
+		await writeFile(join(directory, '.pending-restore.json'), JSON.stringify({ fileName: 'yoda-2026-07-19T11-30-00.000Z.db', requestedAt: new Date().toISOString() }));
+		await mkdir(join(directory, 'live'));
+		await writeFile(`${databasePath}-wal`, 'wal');
+		await writeFile(`${databasePath}-shm`, 'shm');
+
+		const restored = await applyPendingDatabaseBackupRestore(databasePath, directory);
+
+		expect(restored?.fileName).toBe('yoda-2026-07-19T11-30-00.000Z.db');
+		expect(await readFile(databasePath, 'utf8')).toBe('restored database');
+		await expect(stat(`${databasePath}-wal`)).rejects.toMatchObject({ code: 'ENOENT' });
+		await expect(stat(`${databasePath}-shm`)).rejects.toMatchObject({ code: 'ENOENT' });
+		await expect(stat(join(directory, '.pending-restore.json'))).rejects.toMatchObject({ code: 'ENOENT' });
 	});
 });

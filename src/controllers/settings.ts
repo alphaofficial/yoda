@@ -1,6 +1,7 @@
 import { type Request, type Response } from 'express';
+import { spawn } from 'node:child_process';
 import { dashboard } from '@/core/dashboard';
-import { createDatabaseBackup, getBackupStatus } from '@/core/backup';
+import { createDatabaseBackup, getBackupStatus, queueDatabaseBackupRestore } from '@/core/backup';
 import { messages } from '@/config/messages';
 import { createShortcutSettingsExport, validateShortcutSettingsImport } from '@/config/dashboard';
 import { DashboardConfigError } from '@/types/dashboard';
@@ -84,6 +85,33 @@ export async function createBackup(req: Request, res: Response) {
 		return res.redirect(303, '/settings?section=backups');
 	} catch (error) {
 		const message = error instanceof Error ? error.message : messages.backup.createFailed;
+		req.session.flash = { message };
+		return res.redirect(303, '/settings?section=backups');
+	}
+}
+
+function restartProcessForBackupRestore(req: Request): void {
+	if (process.env.NODE_ENV === 'test') return;
+	setTimeout(() => {
+		req.ctx.logger.info({ scope: 'applyBackup', message: 'Restarting process to apply database backup restore' });
+		if (process.env.pm_id !== undefined) {
+			const child = spawn('pm2', ['kill'], { detached: true, stdio: 'ignore' });
+			child.unref();
+			return;
+		}
+		process.kill(process.pid, 'SIGTERM');
+	}, 250).unref();
+}
+
+export async function applyBackup(req: Request, res: Response) {
+	try {
+		const fileName = typeof req.body.fileName === 'string' ? req.body.fileName : '';
+		await queueDatabaseBackupRestore(req.ctx.db, fileName);
+		req.session.flash = { message: messages.backup.restoreQueued };
+		res.on('finish', () => restartProcessForBackupRestore(req));
+		return res.redirect(303, '/settings?section=backups');
+	} catch (error) {
+		const message = error instanceof Error ? error.message : messages.backup.restoreFailed;
 		req.session.flash = { message };
 		return res.redirect(303, '/settings?section=backups');
 	}
